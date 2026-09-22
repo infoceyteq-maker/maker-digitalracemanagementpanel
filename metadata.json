@@ -1,0 +1,6 @@
+{
+  "name": "Digital Race - Multi-Tenant QR Menu SaaS",
+  "description": "Multi-tenant digital QR menu platform for Ceyteq agency, featuring Super Admin control, client restaurant dashboard, custom domain mapping, and mobile-first live customer menus.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

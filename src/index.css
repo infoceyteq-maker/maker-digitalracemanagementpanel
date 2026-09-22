@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@theme {
+  /* Ceyteq Brand Identity & Digital Race Palette */
+  --color-logo-blue: #00C8FF;
+  --color-logo-blue-hover: #00B2E3;
+  --color-logo-blue-muted: rgba(0, 200, 255, 0.12);
+
+  --color-light-blue: #38BDF8;
+  --color-light-blue-50: #F0F9FF;
+  --color-light-blue-100: #E0F2FE;
+
+  --color-navy-blue: #0A192F;
+  --color-navy-blue-deep: #060D1A;
+  --color-navy-blue-surface: #0E2445;
+  --color-navy-blue-border: #1B355A;
+
+  --color-ash-50: #F8FAFC;
+  --color-ash-100: #F1F5F9;
+  --color-ash-200: #E2E8F0;
+  --color-ash-300: #CBD5E1;
+  --color-ash-400: #94A3B8;
+  --color-ash-500: #64748B;
+  --color-ash-800: #1E293B;
+  --color-ash-900: #0F172A;
+
+  --color-brand-black: #020617;
+  --color-brand-white: #FFFFFF;
+
+  /* Strict Highlight Accents: Only for small badges, status tags, or key emphasize words */
+  --color-accent-pink: #F472B6;
+  --color-accent-pink-dark: #E11D48;
+  --color-accent-pink-badge: rgba(225, 29, 72, 0.15);
+}
+
+/* Light Silk Wave Background matching user image */
+body {
+  background-color: #F3F9FE;
+  color: #0F172A;
+  min-height: 100vh;
+}
+
+.bg-silk-light-gradient {
+  background: 
+    radial-gradient(120% 80% at 50% -10%, #FFFFFF 0%, #F3F9FE 40%, #E2F2FD 70%, #CEE8FB 100%);
+  background-attachment: fixed;
+}
+
+.silk-card {
+  background-color: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(186, 230, 253, 0.6);
+  box-shadow: 0 4px 20px -2px rgba(12, 74, 110, 0.05);
+}

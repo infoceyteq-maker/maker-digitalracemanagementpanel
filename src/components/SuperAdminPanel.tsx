@@ -1,0 +1,1164 @@
+import React, { useState } from 'react';
+import { 
+  Building2, 
+  Users, 
+  TrendingUp, 
+  Plus, 
+  Search, 
+  ShieldCheck, 
+  Globe, 
+  ExternalLink, 
+  Power, 
+  AlertTriangle, 
+  CheckCircle2, 
+  DollarSign, 
+  QrCode, 
+  Eye, 
+  MoreVertical,
+  Layers,
+  ArrowUpRight,
+  Server,
+  Bike,
+  Smartphone,
+  Sliders,
+  Settings,
+  CreditCard,
+  MessageSquare,
+  Utensils,
+  Sparkles,
+  RefreshCw,
+  FileText,
+  Clock,
+  Check,
+  X,
+  Filter,
+  Receipt
+} from 'lucide-react';
+import { Tenant, TenantPlan, TenantStatus, SubscriptionTier, DeliveryDriver } from '../types';
+import { CeyteqLogo } from './CeyteqLogo';
+
+interface SuperAdminPanelProps {
+  tenants: Tenant[];
+  onSelectTenant: (tenantId: string) => void;
+  onUpdateTenantStatus: (tenantId: string, status: TenantStatus) => void;
+  onCreateTenant: (newTenant: Partial<Tenant>) => void;
+  onSwitchToTenantDashboard: (tenantId: string) => void;
+  onNavigateToTasteTrip?: () => void;
+  onUpdateTenant?: (updatedTenant: Tenant) => void;
+  drivers?: DeliveryDriver[];
+}
+
+export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
+  tenants,
+  onSelectTenant,
+  onUpdateTenantStatus,
+  onCreateTenant,
+  onSwitchToTenantDashboard,
+  onNavigateToTasteTrip,
+  onUpdateTenant,
+  drivers = [],
+}) => {
+  // Navigation tabs within Master Dashboard (Module 1)
+  const [activeTab, setActiveTab] = useState<'CLIENTS' | 'SALES' | 'FLEET' | 'SETTINGS'>('CLIENTS');
+
+  // Search and Filter States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED' | 'TRIAL'>('ALL');
+  const [tierFilter, setTierFilter] = useState<'ALL' | 'FREE' | 'PLUS' | 'PRO'>('ALL');
+
+  // Modal States
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
+  const [dnsCheckMessage, setDnsCheckMessage] = useState<string | null>(null);
+
+  // New Client Form State
+  const [newName, setNewName] = useState('');
+  const [newSlug, setNewSlug] = useState('');
+  const [newOwnerName, setNewOwnerName] = useState('');
+  const [newOwnerEmail, setNewOwnerEmail] = useState('');
+  const [newTier, setNewTier] = useState<SubscriptionTier>('PRO');
+  const [newCustomDomain, setNewCustomDomain] = useState('');
+
+  // Auto-slug generator
+  const handleNameChange = (val: string) => {
+    setNewName(val);
+    const generatedSlug = val
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[\s_-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    setNewSlug(generatedSlug);
+  };
+
+  const handleCreateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName || !newSlug || !newOwnerEmail) return;
+
+    const monthlyFee = newTier === 'FREE' ? 0 : newTier === 'PLUS' ? 49 : 129;
+    const plan: TenantPlan = newTier === 'FREE' ? 'STARTER' : newTier === 'PLUS' ? 'PRO' : 'ENTERPRISE';
+
+    onCreateTenant({
+      name: newName,
+      slug: newSlug,
+      ownerName: newOwnerName,
+      ownerEmail: newOwnerEmail,
+      tier: newTier,
+      plan,
+      monthlyFee,
+      customDomain: newCustomDomain ? newCustomDomain.trim() : undefined,
+      customDomainVerified: false,
+      dnsStatus: newCustomDomain ? 'PENDING' : 'NOT_CONFIGURED',
+      deliveryEnabled: newTier !== 'FREE',
+      paymentGatewayEnabled: newTier !== 'FREE',
+      whatsappMessagingEnabled: newTier !== 'FREE',
+    });
+
+    setIsCreateModalOpen(false);
+    setNewName('');
+    setNewSlug('');
+    setNewOwnerName('');
+    setNewOwnerEmail('');
+    setNewCustomDomain('');
+    setNewTier('PRO');
+  };
+
+  // Instant Tier Switcher Handler
+  const handleTierChange = (tenant: Tenant, newTier: SubscriptionTier) => {
+    if (!onUpdateTenant) return;
+    const updatedFee = newTier === 'FREE' ? 0 : newTier === 'PLUS' ? 49 : 129;
+    const updatedPlan: TenantPlan = newTier === 'FREE' ? 'STARTER' : newTier === 'PLUS' ? 'PRO' : 'ENTERPRISE';
+    
+    onUpdateTenant({
+      ...tenant,
+      tier: newTier,
+      plan: updatedPlan,
+      monthlyFee: updatedFee,
+      deliveryEnabled: newTier !== 'FREE',
+      paymentGatewayEnabled: newTier !== 'FREE',
+      whatsappMessagingEnabled: newTier !== 'FREE',
+    });
+  };
+
+  // Save Tenant Settings from Modal
+  const handleSaveTenantSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTenant || !onUpdateTenant) return;
+    onUpdateTenant(editingTenant);
+    setEditingTenant(null);
+  };
+
+  // Verify DNS simulation
+  const handleVerifyDns = (tenant: Tenant) => {
+    setDnsCheckMessage(`Querying Cloudflare Edge CNAME for ${tenant.customDomain}...`);
+    setTimeout(() => {
+      if (onUpdateTenant) {
+        onUpdateTenant({
+          ...tenant,
+          customDomainVerified: true,
+          dnsStatus: 'VERIFIED'
+        });
+      }
+      setDnsCheckMessage(`✓ DNS Verified! ${tenant.customDomain} is mapped to cname.ceyteq.com with auto-SSL.`);
+      setTimeout(() => setDnsCheckMessage(null), 4000);
+    }, 1000);
+  };
+
+  // Metrics Calculations
+  const totalTenants = tenants.length;
+  const activeTenants = tenants.filter(t => t.status === 'ACTIVE').length;
+  const totalMrr = tenants.reduce((acc, t) => acc + (t.status === 'ACTIVE' ? t.monthlyFee : 0), 0);
+  const totalViews = tenants.reduce((acc, t) => acc + t.totalViews, 0);
+  const totalGmv = tenants.reduce((acc, t) => acc + (t.totalOrders * 2800), 0); // approx average spend
+
+  const proCount = tenants.filter(t => t.tier === 'PRO').length;
+  const plusCount = tenants.filter(t => t.tier === 'PLUS').length;
+  const freeCount = tenants.filter(t => t.tier === 'FREE').length;
+
+  // Filtered Clients
+  const filteredTenants = tenants.filter(t => {
+    const matchesSearch = 
+      t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.slug.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.ownerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (t.customDomain && t.customDomain.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
+    const matchesTier = tierFilter === 'ALL' || t.tier === tierFilter;
+    return matchesSearch && matchesStatus && matchesTier;
+  });
+
+  // Recent Invoices Mock Ledger
+  const recentInvoices = [
+    { id: 'INV-2026-0901', client: 'Ceylon Spice Bistro', tier: 'PRO', amount: 129, date: 'Sep 01, 2026', status: 'PAID' },
+    { id: 'INV-2026-0902', client: 'The Ocean Catch Club', tier: 'PRO', amount: 129, date: 'Sep 01, 2026', status: 'PAID' },
+    { id: 'INV-2026-0903', client: 'Kandy Royal Lounge', tier: 'PLUS', amount: 49, date: 'Sep 02, 2026', status: 'PAID' },
+    { id: 'INV-2026-0904', client: 'Southern Serenade Cafe', tier: 'PLUS', amount: 49, date: 'Sep 03, 2026', status: 'PAID' },
+    { id: 'INV-2026-0905', client: 'Mirissa Blue Horizon', tier: 'FREE', amount: 0, date: 'Sep 04, 2026', status: 'FREE TIER' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-transparent text-slate-800 pb-16 font-sans">
+      {/* CEYTEQ AGENCY MASTER HEADER */}
+      <header className="bg-white/85 backdrop-blur-md border-b border-sky-100/90 sticky top-0 z-30 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* Logo & Platform Name */}
+          <div className="flex items-center gap-4">
+            <CeyteqLogo size="md" variant="light" />
+            <div className="hidden sm:block h-7 w-[1px] bg-sky-200" />
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-bold text-[#00A3D9] tracking-wider uppercase">
+                Digital Race
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 border border-pink-200 uppercase">
+                Master Admin
+              </span>
+            </div>
+          </div>
+
+          {/* System Edge Status & Jasmine Profile */}
+          <div className="flex items-center gap-3 self-end md:self-auto">
+            {/* Edge DNS status pill */}
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-sky-50 border border-sky-200/80 text-[11px] text-slate-700 font-mono shadow-xs">
+              <span className="w-2 h-2 rounded-full bg-[#00A3D9] animate-pulse" />
+              <span>Edge DNS: <strong className="text-slate-900">100% Online</strong></span>
+            </div>
+
+            {/* Jasmine Agency Admin Indicator */}
+            <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-white border border-sky-200/80 shadow-xs">
+              <div className="w-7 h-7 rounded-lg bg-[#00C8FF] text-[#0A192F] font-black text-xs flex items-center justify-center shadow-xs">
+                JP
+              </div>
+              <div className="text-left">
+                <div className="text-xs font-bold text-slate-900 leading-tight">Jasmine Perera</div>
+                <div className="text-[10px] text-slate-500">Agency Executive</div>
+              </div>
+            </div>
+
+            {/* Provision Restaurant Button */}
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#00C8FF] hover:bg-[#00B2E3] text-[#0A192F] text-xs font-bold shadow-sm transition-transform active:scale-95 shrink-0"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>Provision Restaurant</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Master Navigation Tabs */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 flex items-center gap-2 pt-2 overflow-x-auto no-scrollbar border-t border-sky-100">
+          <button
+            onClick={() => setActiveTab('CLIENTS')}
+            className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${
+              activeTab === 'CLIENTS'
+                ? 'border-[#00C8FF] text-[#0098CC]'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            <span>Restaurant Clients & Tiers</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-sky-100 text-sky-800 font-mono">
+              {totalTenants}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('SALES')}
+            className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${
+              activeTab === 'SALES'
+                ? 'border-[#00C8FF] text-[#0098CC]'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <DollarSign className="w-4 h-4 text-emerald-600" />
+            <span>Overall Sales & Financials</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-700 font-mono border border-emerald-200">
+              ${totalMrr}/mo
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('FLEET')}
+            className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${
+              activeTab === 'FLEET'
+                ? 'border-[#00C8FF] text-[#0098CC]'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Bike className="w-4 h-4 text-pink-600" />
+            <span>Taste Trip Driver Network</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-pink-50 text-pink-700 font-mono border border-pink-200">
+              PRO FLEET
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('SETTINGS')}
+            className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${
+              activeTab === 'SETTINGS'
+                ? 'border-[#00C8FF] text-[#0098CC]'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Server className="w-4 h-4 text-[#0098CC]" />
+            <span>Edge Infrastructure & DNS</span>
+          </button>
+        </div>
+      </header>
+
+      {/* KPI METRIC CARDS ROW */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-8 pt-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Card 1: Agency MRR */}
+          <div className="bg-white/90 backdrop-blur-sm border border-sky-100 rounded-2xl p-5 shadow-sm shadow-sky-950/5 relative overflow-hidden">
+            <div className="flex items-center justify-between text-slate-500 text-xs mb-1">
+              <span className="font-semibold">Agency SaaS MRR</span>
+              <DollarSign className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div className="text-2xl font-black text-slate-900 font-mono">${totalMrr.toLocaleString()}</div>
+            <div className="text-[11px] text-emerald-600 mt-1 flex items-center gap-1 font-medium">
+              <TrendingUp className="w-3 h-3" />
+              <span>Recurring monthly revenue</span>
+            </div>
+          </div>
+
+          {/* Card 2: Total Clients Breakdown */}
+          <div className="bg-white/90 backdrop-blur-sm border border-sky-100 rounded-2xl p-5 shadow-sm shadow-sky-950/5">
+            <div className="flex items-center justify-between text-slate-500 text-xs mb-1">
+              <span className="font-semibold">Client Restaurants</span>
+              <Building2 className="w-4 h-4 text-[#0098CC]" />
+            </div>
+            <div className="text-2xl font-black text-slate-900">{totalTenants} Tenants</div>
+            <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 font-mono">
+              <span className="text-pink-600 font-bold">{proCount} Pro</span> • 
+              <span className="text-sky-600 font-bold">{plusCount} Plus</span> • 
+              <span className="text-slate-600">{freeCount} Free</span>
+            </div>
+          </div>
+
+          {/* Card 3: Total Platform Views */}
+          <div className="bg-white/90 backdrop-blur-sm border border-sky-100 rounded-2xl p-5 shadow-sm shadow-sky-950/5">
+            <div className="flex items-center justify-between text-slate-500 text-xs mb-1">
+              <span className="font-semibold">Total Menu Scans</span>
+              <Eye className="w-4 h-4 text-amber-500" />
+            </div>
+            <div className="text-2xl font-black text-slate-900 font-mono">{totalViews.toLocaleString()}</div>
+            <div className="text-[11px] text-slate-500 mt-1 font-medium">Live digital customer visits</div>
+          </div>
+
+          {/* Card 4: Platform GMV */}
+          <div className="bg-white/90 backdrop-blur-sm border border-sky-100 rounded-2xl p-5 shadow-sm shadow-sky-950/5">
+            <div className="flex items-center justify-between text-slate-500 text-xs mb-1">
+              <span className="font-semibold">Total Food GMV</span>
+              <Sparkles className="w-4 h-4 text-[#0098CC]" />
+            </div>
+            <div className="text-2xl font-black text-[#0098CC] font-mono">
+              Rs. {(totalGmv / 1000).toFixed(0)}k
+            </div>
+            <div className="text-[11px] text-slate-500 mt-1 font-medium">Order value processed</div>
+          </div>
+        </div>
+      </div>
+
+      {/* TAB 1: RESTAURANT CLIENTS & SUBSCRIPTION TIERS */}
+      {activeTab === 'CLIENTS' && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 mt-6 space-y-6">
+          {/* Controls Bar */}
+          <div className="bg-white/90 backdrop-blur-sm border border-sky-100 rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-sm">
+            {/* Search */}
+            <div className="relative w-full lg:w-96">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by restaurant name, domain, slug, or owner..."
+                className="w-full bg-white border border-sky-200 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#00C8FF] shadow-2xs"
+              />
+            </div>
+
+            {/* Tier Filters & Status Filters */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Tier Filter */}
+              <div className="flex items-center bg-sky-100/70 p-1 rounded-xl border border-sky-200/60 shadow-inner">
+                {(['ALL', 'PRO', 'PLUS', 'FREE'] as const).map((tr) => (
+                  <button
+                    key={tr}
+                    onClick={() => setTierFilter(tr)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      tierFilter === tr
+                        ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {tr === 'ALL' ? 'All Tiers' : tr}
+                  </button>
+                ))}
+              </div>
+
+              {/* Status Filter */}
+              <div className="flex items-center bg-sky-100/70 p-1 rounded-xl border border-sky-200/60 shadow-inner">
+                {(['ALL', 'ACTIVE', 'TRIAL', 'SUSPENDED'] as const).map((st) => (
+                  <button
+                    key={st}
+                    onClick={() => setStatusFilter(st)}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      statusFilter === st
+                        ? 'bg-white text-slate-900 shadow-sm font-bold border border-sky-200'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* DNS Verification Alert Notification */}
+          {dnsCheckMessage && (
+            <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs flex items-center justify-between gap-3 shadow-sm animate-fadeIn">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="font-medium">{dnsCheckMessage}</span>
+              </div>
+              <button onClick={() => setDnsCheckMessage(null)} className="text-emerald-700 hover:text-slate-900">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Clients Table */}
+          <div className="bg-white/95 border border-sky-100 rounded-2xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-700">
+                <thead className="bg-sky-50/80 text-slate-600 uppercase text-[10px] tracking-wider font-semibold border-b border-sky-100">
+                  <tr>
+                    <th className="py-3 px-4">Restaurant / Client</th>
+                    <th className="py-3 px-4">Subdomain & Custom Domain</th>
+                    <th className="py-3 px-4">Subscription Tier & Fee</th>
+                    <th className="py-3 px-4">Enabled Capabilities</th>
+                    <th className="py-3 px-4">Access Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-sky-100/70 font-medium">
+                  {filteredTenants.map((t) => {
+                    const isActive = t.status === 'ACTIVE';
+                    const isPro = t.tier === 'PRO';
+                    const isPlus = t.tier === 'PLUS';
+                    const isFree = t.tier === 'FREE';
+
+                    return (
+                      <tr key={t.id} className="hover:bg-sky-50/50 transition-colors">
+                        {/* Client Identity */}
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-3">
+                            <img 
+                              src={t.logoUrl} 
+                              alt={t.name}
+                              className="w-10 h-10 rounded-xl object-cover border border-sky-200 bg-white shrink-0 shadow-xs"
+                            />
+                            <div>
+                              <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                                <span>{t.name}</span>
+                                {isPro && (
+                                  <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-pink-50 text-pink-700 border border-pink-200">
+                                    PRO APP
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-slate-500 text-[11px]">{t.ownerName} • {t.ownerEmail}</div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Domain Routing */}
+                        <td className="py-3.5 px-4">
+                          <div className="space-y-1 font-mono text-[11px]">
+                            <div className="text-slate-700">
+                              {t.subdomain}.ceyteq.com
+                            </div>
+                            {t.customDomain ? (
+                              <div className="flex items-center gap-1.5 text-[#008BB8] font-bold">
+                                <Globe className="w-3 h-3 text-[#00A3D9]" />
+                                <span>{t.customDomain}</span>
+                                {t.customDomainVerified ? (
+                                  <span className="text-[9px] px-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    SSL Active
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => handleVerifyDns(t)}
+                                    className="text-[9px] px-1 rounded bg-pink-50 text-pink-700 border border-pink-200 hover:bg-pink-100 transition-colors cursor-pointer"
+                                    title="Click to trigger Edge CNAME verification"
+                                  >
+                                    Verify DNS
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 italic">No custom domain</span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Tier Selector & Fee */}
+                        <td className="py-3.5 px-4">
+                          <div className="flex flex-col gap-1.5">
+                            <select
+                              value={t.tier || 'PRO'}
+                              onChange={(e) => handleTierChange(t, e.target.value as SubscriptionTier)}
+                              className={`text-xs font-bold rounded-lg px-2 py-1 border cursor-pointer focus:outline-none shadow-2xs ${
+                                isPro
+                                  ? 'bg-pink-50 text-pink-700 border-pink-300'
+                                  : isPlus
+                                  ? 'bg-sky-50 text-sky-700 border-sky-300'
+                                  : 'bg-slate-50 text-slate-700 border-slate-300'
+                              }`}
+                            >
+                              <option value="FREE">Free Tier ($0/mo)</option>
+                              <option value="PLUS">Plus Tier ($49/mo)</option>
+                              <option value="PRO">Pro Tier ($129/mo)</option>
+                            </select>
+
+                            <div className="text-[11px] font-mono text-slate-500">
+                              Billing: <strong className="text-slate-900 font-bold">${t.monthlyFee}/mo</strong>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Capabilities Pills */}
+                        <td className="py-3.5 px-4">
+                          <div className="flex flex-wrap gap-1 text-[10px]">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                              QR Menu
+                            </span>
+                            {t.deliveryEnabled && (
+                              <span className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200 font-medium">
+                                Delivery
+                              </span>
+                            )}
+                            {t.paymentGatewayEnabled && (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
+                                Cards
+                              </span>
+                            )}
+                            {isPro && (
+                              <span className="px-1.5 py-0.5 rounded bg-pink-50 text-pink-700 border border-pink-200 font-bold">
+                                Taste Trip
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Status Toggle */}
+                        <td className="py-3.5 px-4">
+                          <button
+                            onClick={() => onUpdateTenantStatus(t.id, isActive ? 'SUSPENDED' : 'ACTIVE')}
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1 transition-all ${
+                              isActive 
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100' 
+                                : 'bg-pink-50 text-pink-700 border border-pink-200 hover:bg-pink-100'
+                            }`}
+                            title="Click to toggle access on/off"
+                          >
+                            <Power className="w-3 h-3" />
+                            <span>{isActive ? 'Active' : 'Suspended'}</span>
+                          </button>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {/* Configure Tenant Modal Button */}
+                            <button
+                              onClick={() => setEditingTenant({ ...t })}
+                              className="p-1.5 rounded-lg bg-white hover:bg-sky-50 text-slate-700 border border-sky-200 text-xs font-semibold shadow-2xs"
+                              title="Configure Tenant Settings, Domains, and Roles"
+                            >
+                              <Settings className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Open Restaurant Admin Dashboard */}
+                            <button
+                              onClick={() => onSwitchToTenantDashboard(t.id)}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-[#00C8FF] text-[#008BB8] hover:text-[#0A192F] text-xs font-bold border border-sky-200 transition-all shadow-xs group"
+                              title="Impersonate & Open Client Web Panel"
+                            >
+                              <span>Enter Panel</span>
+                              <ArrowUpRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: OVERALL SALES & FINANCIAL MONITORING */}
+      {activeTab === 'SALES' && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 mt-6 space-y-6">
+          {/* Revenue Breakdown by Tier */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white/90 backdrop-blur-sm border border-sky-100 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center justify-between text-xs text-pink-600 font-bold mb-1">
+                <span>Pro Tier Revenue</span>
+                <span className="text-[10px] bg-pink-50 border border-pink-200 px-1.5 py-0.5 rounded text-pink-700">68% Share</span>
+              </div>
+              <div className="text-xl font-black text-slate-900 font-mono mt-1">
+                ${(proCount * 129).toLocaleString()}/mo
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                {proCount} restaurants subscribing to Total Operations, POS, KOT & Taste Trip Mobile.
+              </p>
+            </div>
+
+            <div className="bg-white/90 backdrop-blur-sm border border-sky-100 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center justify-between text-xs text-[#008BB8] font-bold mb-1">
+                <span>Plus Tier Revenue</span>
+                <span className="text-[10px] bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded text-sky-700">28% Share</span>
+              </div>
+              <div className="text-xl font-black text-slate-900 font-mono mt-1">
+                ${(plusCount * 49).toLocaleString()}/mo
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                {plusCount} restaurants utilizing custom web panel, delivery ordering & WhatsApp status.
+              </p>
+            </div>
+
+            <div className="bg-white/90 backdrop-blur-sm border border-sky-100 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center justify-between text-xs text-slate-500 font-bold mb-1">
+                <span>Free Tier (Funnel)</span>
+                <span className="text-[10px] bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-slate-600">4% Share</span>
+              </div>
+              <div className="text-xl font-black text-slate-900 font-mono mt-1">
+                $0/mo
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                {freeCount} restaurants on basic QR digital menu. Prime pipeline for upselling to Plus & Pro.
+              </p>
+            </div>
+          </div>
+
+          {/* Invoices Ledger Table */}
+          <div className="bg-white/95 border border-sky-100 rounded-2xl overflow-hidden shadow-sm">
+            <div className="p-4 sm:p-5 border-b border-sky-100 flex items-center justify-between bg-sky-50/50">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-[#00A3D9]" />
+                  <span>Ceyteq Agency SaaS Billing Invoices</span>
+                </h3>
+                <p className="text-xs text-slate-500">Automated recurring subscription payments collected via Stripe Connect.</p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-700">
+                <thead className="bg-sky-50/80 text-slate-600 uppercase text-[10px] tracking-wider font-semibold border-b border-sky-100">
+                  <tr>
+                    <th className="py-3 px-4">Invoice #</th>
+                    <th className="py-3 px-4">Restaurant Client</th>
+                    <th className="py-3 px-4">Subscription Plan</th>
+                    <th className="py-3 px-4">Billed Amount</th>
+                    <th className="py-3 px-4">Billing Date</th>
+                    <th className="py-3 px-4">Payment Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-sky-100/70 font-medium">
+                  {recentInvoices.map((inv) => (
+                    <tr key={inv.id} className="hover:bg-sky-50/50 transition-colors">
+                      <td className="py-3.5 px-4 font-mono font-bold text-slate-900">{inv.id}</td>
+                      <td className="py-3.5 px-4 text-slate-900 font-semibold">{inv.client}</td>
+                      <td className="py-3.5 px-4">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200">
+                          {inv.tier} TIER
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 font-mono font-bold text-emerald-600">${inv.amount}.00</td>
+                      <td className="py-3.5 px-4 text-slate-500 font-mono">{inv.date}</td>
+                      <td className="py-3.5 px-4">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          inv.status === 'PAID'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-slate-100 text-slate-600 border-slate-200'
+                        }`}>
+                          {inv.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: TASTE TRIP DRIVER FLEET MANAGEMENT */}
+      {activeTab === 'FLEET' && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 mt-6 space-y-6">
+          {/* Fleet Highlight Banner */}
+          <div className="bg-gradient-to-r from-white via-pink-50/40 to-sky-50/50 border border-sky-100 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold text-pink-600 uppercase tracking-wider">
+                <Bike className="w-4 h-4" />
+                <span>Taste Trip Pro Courier Network</span>
+              </div>
+              <h2 className="text-lg font-black text-slate-900 mt-1">
+                Centralized Colombo Rider Fleet & GPS Dispatch
+              </h2>
+              <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
+                Taste Trip is the dedicated courier network serving Pro tier restaurant orders. Manage on-duty couriers, verify rider KYC documents, and monitor live delivery dispatch.
+              </p>
+            </div>
+
+            {onNavigateToTasteTrip && (
+              <button
+                onClick={onNavigateToTasteTrip}
+                className="px-5 py-2.5 rounded-xl bg-[#00C8FF] hover:bg-[#00B2E3] text-[#0A192F] text-xs font-bold shadow-sm flex items-center gap-2 shrink-0 transition-transform active:scale-95"
+              >
+                <span>Launch Live Driver Radar & Cockpit</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Fleet Quick Metrics */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white/90 backdrop-blur-sm border border-sky-100 rounded-2xl p-5 shadow-sm">
+              <span className="text-xs text-slate-500">Total Registered Couriers</span>
+              <p className="text-2xl font-black text-slate-900 font-mono mt-1">{drivers.length || 6} Riders</p>
+              <span className="text-xs text-emerald-600 mt-2 block font-medium">100% KYC Verified & Documented</span>
+            </div>
+
+            <div className="bg-white/90 backdrop-blur-sm border border-sky-100 rounded-2xl p-5 shadow-sm">
+              <span className="text-xs text-slate-500">Avg Colombo Delivery Time</span>
+              <p className="text-2xl font-black text-[#008BB8] font-mono mt-1">23.8 Mins</p>
+              <span className="text-xs text-slate-500 mt-2 block">High-accuracy GPS telemetry</span>
+            </div>
+
+            <div className="bg-white/90 backdrop-blur-sm border border-sky-100 rounded-2xl p-5 shadow-sm">
+              <span className="text-xs text-slate-500">Dispatch Acceptance Rate</span>
+              <p className="text-2xl font-black text-pink-600 font-mono mt-1">98.6%</p>
+              <span className="text-xs text-slate-500 mt-2 block">Radar auto-fallback enabled</span>
+            </div>
+          </div>
+
+          {/* Drivers Roster */}
+          <div className="bg-white/95 border border-sky-100 rounded-2xl overflow-hidden shadow-sm">
+            <div className="p-4 sm:p-5 border-b border-sky-100 flex items-center justify-between bg-sky-50/50">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Users className="w-4 h-4 text-[#00A3D9]" />
+                <span>Central Rider Directory</span>
+              </h3>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-700">
+                <thead className="bg-sky-50/80 text-slate-600 uppercase text-[10px] tracking-wider font-semibold border-b border-sky-100">
+                  <tr>
+                    <th className="py-3 px-4">Courier Name</th>
+                    <th className="py-3 px-4">Vehicle & License Plate</th>
+                    <th className="py-3 px-4">Contact</th>
+                    <th className="py-3 px-4">KYC Status</th>
+                    <th className="py-3 px-4">Rating & Trips</th>
+                    <th className="py-3 px-4">Duty Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-sky-100/70 font-medium">
+                  {(drivers.length > 0 ? drivers : [
+                    { id: 'dr-1', name: 'Naveen Perera', phone: '+94 77 123 4567', vehicleType: 'MOTORBIKE', vehiclePlate: 'WP BDF-4892', rating: 4.9, totalTrips: 342, isAvailable: true, kycVerified: true },
+                    { id: 'dr-2', name: 'Chaminda Silva', phone: '+94 71 987 6543', vehicleType: 'SCOOTER', vehiclePlate: 'WP CAL-8921', rating: 4.8, totalTrips: 218, isAvailable: true, kycVerified: true },
+                    { id: 'dr-3', name: 'Ashen Bandara', phone: '+94 76 555 1212', vehicleType: 'MOTORBIKE', vehiclePlate: 'CP BIJ-1102', rating: 4.95, totalTrips: 512, isAvailable: false, kycVerified: true },
+                  ]).map((dr: any) => (
+                    <tr key={dr.id} className="hover:bg-sky-50/50 transition-colors">
+                      <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-sky-100 border border-sky-200 flex items-center justify-center text-xs font-black text-[#008BB8]">
+                          {dr.name.charAt(0)}
+                        </div>
+                        <div>
+                          <div>{dr.name}</div>
+                          <span className="text-[10px] text-slate-500 font-mono">{dr.id}</span>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4 font-mono">
+                        <div className="text-slate-900 font-bold">{dr.vehiclePlate}</div>
+                        <div className="text-[10px] text-slate-500">{dr.vehicleType}</div>
+                      </td>
+                      <td className="py-3.5 px-4 font-mono text-slate-600">{dr.phone}</td>
+                      <td className="py-3.5 px-4">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 border border-pink-200">
+                          KYC VERIFIED
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="text-amber-500 font-bold">★ {dr.rating}</div>
+                        <div className="text-[10px] text-slate-500 font-mono">{dr.totalTrips} deliveries</div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
+                          dr.isAvailable
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-slate-100 text-slate-600 border-slate-200'
+                        }`}>
+                          {dr.isAvailable ? 'AVAILABLE / ON DUTY' : 'OFFLINE'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: EDGE INFRASTRUCTURE & SETTINGS */}
+      {activeTab === 'SETTINGS' && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 mt-6 space-y-6">
+          <div className="bg-white/90 backdrop-blur-sm border border-sky-100 rounded-2xl p-6 space-y-5 shadow-sm">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Server className="w-4 h-4 text-[#00A3D9]" />
+              <span>Multi-Tenant Edge Architecture Configuration</span>
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 rounded-xl bg-sky-50/50 border border-sky-100 space-y-2">
+                <span className="text-xs font-bold text-slate-900 block">Next.js Edge Middleware Status</span>
+                <p className="text-xs text-slate-600">
+                  Rewrites incoming Host headers to respective restaurant tenant contexts dynamically without rebuilding containers.
+                </p>
+                <div className="flex items-center gap-2 pt-2 text-xs font-mono text-emerald-600 font-bold">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Status: Active & Routing (Lat: 18ms)</span>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-sky-50/50 border border-sky-100 space-y-2">
+                <span className="text-xs font-bold text-slate-900 block">Cloudflare Wildcard SSL (`*.ceyteq.com`)</span>
+                <p className="text-xs text-slate-600">
+                  Automated SSL termination with zero downtime certificate rotation for all generated restaurant subdomains.
+                </p>
+                <div className="flex items-center gap-2 pt-2 text-xs font-mono text-emerald-600 font-bold">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Status: Valid TLS 1.3 Active</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-sky-50/50 border border-sky-100 space-y-2">
+              <span className="text-xs font-bold text-slate-900 block">Custom Domain CNAME Record Target</span>
+              <p className="text-xs text-slate-600">
+                Give this exact record to clients using their own custom domain (e.g. `menu.oceanclub.lk`):
+              </p>
+              <div className="p-3 rounded-lg bg-white border border-sky-200 font-mono text-xs text-[#008BB8] flex items-center justify-between shadow-2xs">
+                <span className="font-bold">CNAME: cname.ceyteq.com</span>
+                <span className="text-[10px] text-slate-500">TTL: Automatic</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 1: PROVISION NEW RESTAURANT CLIENT */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-sky-100 rounded-3xl w-full max-w-lg p-6 shadow-2xl text-slate-800">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Provision New Restaurant Tenant</h2>
+                <p className="text-xs text-slate-500">Instantly deploy a new client into the Ceyteq Digital Race ecosystem.</p>
+              </div>
+              <button onClick={() => setIsCreateModalOpen(false)} className="text-slate-400 hover:text-slate-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateSubmit} className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-slate-700 block mb-1">Restaurant Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Galle Fort Heritage Cafe"
+                  value={newName}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#00C8FF] shadow-2xs"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-700 block mb-1">Subdomain Slug</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono text-slate-400">https://</span>
+                  <input
+                    type="text"
+                    required
+                    placeholder="galle-fort"
+                    value={newSlug}
+                    onChange={(e) => setNewSlug(e.target.value)}
+                    className="flex-1 bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-[#00C8FF] shadow-2xs"
+                  />
+                  <span className="text-xs font-mono text-slate-500">.ceyteq.com</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-700 block mb-1">Owner Contact Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Roshan Jayasuriya"
+                    value={newOwnerName}
+                    onChange={(e) => setNewOwnerName(e.target.value)}
+                    className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#00C8FF] shadow-2xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-slate-700 block mb-1">Owner Email</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="owner@gallefort.lk"
+                    value={newOwnerEmail}
+                    onChange={(e) => setNewOwnerEmail(e.target.value)}
+                    className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#00C8FF] shadow-2xs"
+                  />
+                </div>
+              </div>
+
+              {/* Initial Subscription Tier Selection */}
+              <div>
+                <label className="text-xs font-medium text-slate-700 block mb-1">Initial Subscription Tier</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewTier('FREE')}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      newTier === 'FREE'
+                        ? 'bg-sky-50 text-slate-900 border-[#00C8FF] shadow-xs'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="text-xs font-bold text-slate-900">Free Tier</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">$0/month</div>
+                    <div className="text-[9px] text-slate-400 mt-1">QR Menu only</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewTier('PLUS')}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      newTier === 'PLUS'
+                        ? 'bg-sky-50 text-sky-800 border-[#00C8FF] shadow-xs'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="text-xs font-bold text-slate-900">Plus Tier</div>
+                    <div className="text-[10px] text-[#008BB8] font-bold mt-0.5">$49/month</div>
+                    <div className="text-[9px] text-slate-500 mt-1">Delivery + Cards</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewTier('PRO')}
+                    className={`p-2.5 rounded-xl border text-left transition-all relative ${
+                      newTier === 'PRO'
+                        ? 'bg-pink-50 text-pink-800 border-pink-400 shadow-xs'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="absolute top-1.5 right-1.5 text-[8px] bg-pink-600 text-white font-black px-1 rounded">POPULAR</span>
+                    <div className="text-xs font-bold text-slate-900">Pro Tier</div>
+                    <div className="text-[10px] text-pink-600 font-bold mt-0.5">$129/month</div>
+                    <div className="text-[9px] text-slate-500 mt-1">POS, KOT & App</div>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-700 block mb-1">Custom Domain (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. menu.gallefortcafe.com"
+                  value={newCustomDomain}
+                  onChange={(e) => setNewCustomDomain(e.target.value)}
+                  className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-[#00C8FF] shadow-2xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-sky-100">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-[#00C8FF] hover:bg-[#00B2E3] text-[#0A192F] text-xs font-bold shadow-sm"
+                >
+                  Provision Tenant
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: EDIT TENANT SETTINGS */}
+      {editingTenant && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-sky-100 rounded-3xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto text-slate-800">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-[#00A3D9]" />
+                  <span>Configure Settings: {editingTenant.name}</span>
+                </h2>
+                <p className="text-xs text-slate-500">Manage tenant tier, billing fee, domain and feature entitlements.</p>
+              </div>
+              <button onClick={() => setEditingTenant(null)} className="text-slate-400 hover:text-slate-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTenantSettings} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-700 block mb-1">Restaurant Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingTenant.name}
+                    onChange={(e) => setEditingTenant({ ...editingTenant, name: e.target.value })}
+                    className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#00C8FF] shadow-2xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-slate-700 block mb-1">Monthly Billing ($)</label>
+                  <input
+                    type="number"
+                    required
+                    value={editingTenant.monthlyFee}
+                    onChange={(e) => setEditingTenant({ ...editingTenant, monthlyFee: Number(e.target.value) })}
+                    className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-[#00C8FF] shadow-2xs"
+                  />
+                </div>
+              </div>
+
+              {/* Tier Selection */}
+              <div>
+                <label className="text-xs font-medium text-slate-700 block mb-1">Subscription Tier</label>
+                <select
+                  value={editingTenant.tier || 'PRO'}
+                  onChange={(e) => {
+                    const nextTier = e.target.value as SubscriptionTier;
+                    setEditingTenant({
+                      ...editingTenant,
+                      tier: nextTier,
+                      plan: nextTier === 'FREE' ? 'STARTER' : nextTier === 'PLUS' ? 'PRO' : 'ENTERPRISE',
+                      monthlyFee: nextTier === 'FREE' ? 0 : nextTier === 'PLUS' ? 49 : 129,
+                      deliveryEnabled: nextTier !== 'FREE',
+                      paymentGatewayEnabled: nextTier !== 'FREE',
+                    });
+                  }}
+                  className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#00C8FF] shadow-2xs"
+                >
+                  <option value="FREE">Free Tier ($0/mo - QR Digital Menu)</option>
+                  <option value="PLUS">Plus Tier ($49/mo - Delivery & WhatsApp)</option>
+                  <option value="PRO">Pro Tier ($129/mo - POS, KOT & Taste Trip Mobile)</option>
+                </select>
+              </div>
+
+              {/* Custom Domain */}
+              <div>
+                <label className="text-xs font-medium text-slate-700 block mb-1">Custom Domain</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="menu.restaurant.com"
+                    value={editingTenant.customDomain || ''}
+                    onChange={(e) => setEditingTenant({ ...editingTenant, customDomain: e.target.value })}
+                    className="flex-1 bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-[#00C8FF] shadow-2xs"
+                  />
+                  <label className="flex items-center gap-1.5 text-xs text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={editingTenant.customDomainVerified}
+                      onChange={(e) => setEditingTenant({ ...editingTenant, customDomainVerified: e.target.checked })}
+                      className="rounded accent-[#00A3D9]"
+                    />
+                    <span>Verified</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Feature Toggles */}
+              <div className="p-3.5 rounded-xl bg-sky-50/50 border border-sky-200 space-y-2">
+                <span className="text-xs font-bold text-slate-900 block mb-1">Feature Entitlements</span>
+                
+                <label className="flex items-center justify-between text-xs text-slate-700 cursor-pointer">
+                  <span>Online Delivery Orders & Cart</span>
+                  <input
+                    type="checkbox"
+                    checked={editingTenant.deliveryEnabled}
+                    onChange={(e) => setEditingTenant({ ...editingTenant, deliveryEnabled: e.target.checked })}
+                    className="rounded accent-[#00A3D9]"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between text-xs text-slate-700 cursor-pointer">
+                  <span>Card Payments Gateway</span>
+                  <input
+                    type="checkbox"
+                    checked={editingTenant.paymentGatewayEnabled}
+                    onChange={(e) => setEditingTenant({ ...editingTenant, paymentGatewayEnabled: e.target.checked })}
+                    className="rounded accent-[#00A3D9]"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between text-xs text-slate-700 cursor-pointer">
+                  <span>WhatsApp Order Status Alerts</span>
+                  <input
+                    type="checkbox"
+                    checked={editingTenant.whatsappMessagingEnabled}
+                    onChange={(e) => setEditingTenant({ ...editingTenant, whatsappMessagingEnabled: e.target.checked })}
+                    className="rounded accent-[#00A3D9]"
+                  />
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-sky-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingTenant(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-[#00C8FF] hover:bg-[#00B2E3] text-[#0A192F] text-xs font-bold shadow-sm"
+                >
+                  Save Configuration
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
