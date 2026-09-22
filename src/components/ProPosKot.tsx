@@ -152,9 +152,9 @@ export const ProPosKot: React.FC<ProPosKotProps> = ({
             </p>
           </div>
 
-          {/* 5-Department RBAC Switcher */}
-          <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-sky-200 shadow-2xs">
-            <span className="text-[11px] font-bold text-slate-500 pl-2 flex items-center gap-1">
+          {/* 5-Department RBAC Switcher - Mobile responsive horizontal scroll */}
+          <div className="flex items-center gap-1.5 bg-white p-1.5 rounded-2xl border border-sky-200 shadow-2xs overflow-x-auto no-scrollbar max-w-full">
+            <span className="text-[11px] font-bold text-slate-500 pl-2 flex items-center gap-1 shrink-0">
               <UserCheck className="w-3.5 h-3.5 text-pink-600" />
               <span>Role:</span>
             </span>
@@ -168,7 +168,7 @@ export const ProPosKot: React.FC<ProPosKotProps> = ({
                   if (role === 'FRONT') setActiveSection('POS');
                   if (role === 'FINANCE') setActiveSection('FINANCE');
                 }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
                   activeRole === role
                     ? 'bg-pink-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-sky-50'
@@ -184,11 +184,11 @@ export const ProPosKot: React.FC<ProPosKotProps> = ({
           </div>
         </div>
 
-        {/* View Section Tabs */}
-        <div className="max-w-7xl mx-auto flex items-center gap-3 mt-4 border-t border-sky-100 pt-3">
+        {/* View Section Tabs - Smooth horizontal scrolling on mobile */}
+        <div className="max-w-7xl mx-auto flex items-center gap-2 sm:gap-3 mt-4 border-t border-sky-100 pt-3 overflow-x-auto no-scrollbar pb-1">
           <button
             onClick={() => setActiveSection('POS')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
               activeSection === 'POS'
                 ? 'bg-white text-slate-900 border border-sky-200 shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
@@ -200,7 +200,7 @@ export const ProPosKot: React.FC<ProPosKotProps> = ({
 
           <button
             onClick={() => setActiveSection('KOT')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all relative ${
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all relative whitespace-nowrap shrink-0 ${
               activeSection === 'KOT'
                 ? 'bg-white text-slate-900 border border-sky-200 shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
@@ -215,7 +215,7 @@ export const ProPosKot: React.FC<ProPosKotProps> = ({
 
           <button
             onClick={() => setActiveSection('FINANCE')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
               activeSection === 'FINANCE'
                 ? 'bg-white text-slate-900 border border-sky-200 shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
@@ -449,6 +449,38 @@ export const ProPosKot: React.FC<ProPosKotProps> = ({
               )}
             </div>
           </div>
+
+          {/* Mobile Floating Sticky POS Cart Bar (Visible on mobile/tablets when items in cart) */}
+          {posCart.length > 0 && (
+            <div className="lg:hidden fixed bottom-12 left-0 right-0 z-30 p-2.5 bg-slate-900/95 backdrop-blur-md text-white border-t border-slate-800 shadow-xl flex items-center justify-between gap-2">
+              <div className="flex flex-col pl-1">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">
+                  {posCart.reduce((sum, i) => sum + i.quantity, 0)} items ({posTable === 'WALK_IN' ? 'Walk-in' : `T#${posTable}`})
+                </span>
+                <span className="text-xs font-black text-amber-300 font-mono">
+                  {tenant.currency} {posSubtotal.toLocaleString()}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => handleDispatchPosOrder(false)}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 text-[11px] font-bold flex items-center gap-1 border border-slate-700 active:scale-95 transition-all"
+                >
+                  <ChefHat className="w-3.5 h-3.5" />
+                  <span>KOT</span>
+                </button>
+
+                <button
+                  onClick={() => handleDispatchPosOrder(true)}
+                  className="px-3 py-1.5 rounded-lg bg-pink-600 hover:bg-pink-500 text-white text-[11px] font-bold flex items-center gap-1 shadow-md active:scale-95 transition-all"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Pay & Bill</span>
+                </button>
+              </div>
+            </div>
+          )}
         </main>
       )}
 

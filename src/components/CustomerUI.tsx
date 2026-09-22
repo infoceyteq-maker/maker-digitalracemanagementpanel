@@ -257,7 +257,7 @@ export const CustomerUI: React.FC<CustomerUIProps> = ({
       </aside>
 
       {/* Main Container - Optimized for mobile-first view (max-w-md or max-w-lg centered) */}
-      <main className="max-w-md sm:max-w-lg mx-auto bg-transparent relative">
+      <main className="max-w-md sm:max-w-lg mx-auto bg-transparent relative pb-36 md:pb-24">
         
         {/* Cover Hero Banner */}
         <div className="relative h-44 sm:h-52 w-full overflow-hidden bg-slate-900 shadow-sm">
@@ -631,8 +631,8 @@ export const CustomerUI: React.FC<CustomerUIProps> = ({
         </div>
       </main>
 
-      {/* Floating Bottom Bar: Waiter Call & Cart Status */}
-      <footer className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-sky-100 p-3 shadow-lg">
+      {/* Floating Bottom Bar: Waiter Call & Cart Status (positioned safely above mobile bottom dock) */}
+      <footer className="fixed bottom-12 md:bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-sky-100 p-2.5 sm:p-3 shadow-lg">
         <div className="max-w-md sm:max-w-lg mx-auto flex items-center justify-between gap-3">
           
           {/* Call Waiter (Only for Dine-in) */}

@@ -132,9 +132,32 @@ export interface Tenant {
   deliveryEnabled: boolean;
   paymentGatewayEnabled: boolean;
   whatsappMessagingEnabled: boolean;
+  hasAiChatbot?: boolean;
+  aiChatbotConfig?: AiChatbotConfig;
   dailyTrends?: DailyTrend[];
   categories: Category[];
   products: Product[];
+}
+
+export interface AiChatbotConfig {
+  enabled: boolean;
+  whatsappPhoneNumberId?: string;
+  whatsappBusinessAccountId?: string;
+  whatsappVerifyToken?: string;
+  autoReplyEnabled: boolean;
+  botTone?: 'POLITE_CONCIERGE' | 'CASUAL_FRIENDLY' | 'FAST_ORDER_ASSISTANT';
+  customInstructions?: string;
+  welcomeMessage?: string;
+  conversationsCount?: number;
+  lastActiveTimestamp?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: string;
+  source?: 'internal_panel' | 'whatsapp';
 }
 
 export interface CartItem {
@@ -192,5 +215,8 @@ export type ActiveView =
   | 'ANALYTICS' 
   | 'ARCHITECTURE' 
   | 'TASTE_TRIP'
-  | 'TASTRIP_DASHBOARD';
+  | 'TASTRIP_DASHBOARD'
+  | 'SECURITY_CENTER';
+
+export * from './types/security';
 

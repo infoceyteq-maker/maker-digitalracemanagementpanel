@@ -8,8 +8,12 @@ import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { ArchitectureHub } from './components/ArchitectureHub';
 import { TasteTripEcosystem } from './components/TasteTripEcosystem';
 import { SilkWaveBackdrop } from './components/SilkWaveBackdrop';
+import { SecurityCenter } from './components/SecurityCenter';
+import { SecurityAuthModal } from './components/SecurityAuthModal';
+import { RbacBarrier } from './components/RbacBarrier';
+import { GlobalErrorBoundary } from './components/GlobalErrorBoundary';
 import { INITIAL_TENANTS, INITIAL_ORDERS, INITIAL_DRIVERS, INITIAL_DEPLOYMENTS, generateTenantDailyTrends } from './mockData';
-import { ActiveView, Tenant, TenantStatus, WaiterRequest, CustomerOrder, DeliveryDriver, TasteTripDeployment } from './types';
+import { ActiveView, Tenant, TenantStatus, WaiterRequest, CustomerOrder, DeliveryDriver, TasteTripDeployment, AuthUser } from './types';
 
 export default function App() {
   const [tenants, setTenants] = useState<Tenant[]>(INITIAL_TENANTS);
@@ -19,6 +23,20 @@ export default function App() {
   const [orders, setOrders] = useState<CustomerOrder[]>(INITIAL_ORDERS);
   const [drivers, setDrivers] = useState<DeliveryDriver[]>(INITIAL_DRIVERS);
   const [deployments, setDeployments] = useState<TasteTripDeployment[]>(INITIAL_DEPLOYMENTS);
+
+  // Authentication & Security User State (Defaulting to Super Admin for full exploratory clearance)
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>({
+    id: 'user-master-1',
+    email: 'admin@ceyteq.com',
+    name: 'Ceyteq Security Lead',
+    role: 'SUPER_ADMIN',
+    tier: 'PRO',
+    isEmailVerified: true,
+    mfaEnabled: true,
+    status: 'ACTIVE',
+    failedLoginAttempts: 0,
+  });
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
 
   // Real-time table calls state
   const [waiterCalls, setWaiterCalls] = useState<WaiterRequest[]>([
@@ -39,6 +57,10 @@ export default function App() {
   ]);
 
   const currentTenant = tenants.find(t => t.id === currentTenantId) || tenants[0];
+
+  // RBAC checks
+  const canAccessProOperations = currentUser?.role === 'SUPER_ADMIN' || currentUser?.tier === 'PRO' || currentTenant.tier === 'PRO';
+  const canAccessSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
 
   // Update tenant details (food prices, stock status, custom domain)
   const handleUpdateTenant = (updatedTenant: Tenant) => {
@@ -159,102 +181,153 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-silk-light-gradient text-slate-900 flex flex-col font-sans relative">
-      {/* Background silk wave drape matching user's image */}
-      <SilkWaveBackdrop />
+    <GlobalErrorBoundary>
+      <div className="min-h-screen bg-silk-light-gradient text-slate-900 flex flex-col font-sans relative">
+        {/* Background silk wave drape */}
+        <SilkWaveBackdrop />
 
-      <div className="relative z-10 flex flex-col min-h-screen">
-        <Navbar
-          activeView={activeView}
-          setActiveView={setActiveView}
-          tenants={tenants}
-          currentTenantId={currentTenantId}
-          onSelectTenant={setCurrentTenantId}
-          waiterCalls={waiterCalls}
-          tableNumber={tableNumber}
-          setTableNumber={setTableNumber}
-        />
-
-        <main className="flex-1">
-        {activeView === 'PUBLIC_MENU' && (
-          <CustomerUI
-            tenant={currentTenant}
-            tableNumber={tableNumber}
-            onCallWaiter={handleCallWaiter}
-            onPlaceOrder={handlePlaceOrder}
-            onOpenDashboard={() => setActiveView('CLIENT_DASHBOARD')}
-            activeOrders={orders.filter(o => o.tenantId === currentTenant.id)}
-          />
-        )}
-
-        {activeView === 'CLIENT_DASHBOARD' && (
-          <RestaurantDashboard
-            tenant={currentTenant}
-            onUpdateTenant={handleUpdateTenant}
-            onSwitchToPublicMenu={(t) => {
-              if (t) setTableNumber(t);
-              setActiveView('PUBLIC_MENU');
-            }}
-            waiterCalls={waiterCalls}
-            onDismissWaiterCall={handleDismissWaiterCall}
-            onBackToSuperAdmin={() => setActiveView('SUPER_ADMIN')}
-            onOpenTasTripDashboard={() => setActiveView('TASTE_TRIP')}
-          />
-        )}
-
-        {activeView === 'PRO_OPERATIONS' && (
-          <ProPosKot
-            tenant={currentTenant}
-            orders={orders.filter(o => o.tenantId === currentTenant.id)}
-            onUpdateOrderStatus={handleUpdateOrderStatus}
-            onAddNewOrder={handleAddNewOrder}
-            onOpenCustomerMenu={() => setActiveView('PUBLIC_MENU')}
-          />
-        )}
-
-        {activeView === 'SUPER_ADMIN' && (
-          <SuperAdminPanel
-            tenants={tenants}
-            onSelectTenant={(id) => setCurrentTenantId(id)}
-            onUpdateTenantStatus={handleUpdateTenantStatus}
-            onCreateTenant={handleCreateTenant}
-            onSwitchToTenantDashboard={(id) => {
-              setCurrentTenantId(id);
-              setActiveView('CLIENT_DASHBOARD');
-            }}
-            onNavigateToTasteTrip={() => setActiveView('TASTE_TRIP')}
-            onUpdateTenant={handleUpdateTenant}
-            drivers={drivers}
-          />
-        )}
-
-        {(activeView === 'TASTE_TRIP' || (activeView as any) === 'TASTRIP_DASHBOARD') && (
-          <TasteTripEcosystem
-            tenants={tenants}
-            drivers={drivers}
-            deployments={deployments}
-            onBackToDigitalRace={() => setActiveView('CLIENT_DASHBOARD')}
-            onSelectTenant={(id) => setCurrentTenantId(id)}
-          />
-        )}
-
-        {activeView === 'ANALYTICS' && (
-          <AnalyticsDashboard
+        <div className="relative z-10 flex flex-col min-h-screen">
+          <Navbar
+            activeView={activeView}
+            setActiveView={setActiveView}
             tenants={tenants}
             currentTenantId={currentTenantId}
-            onSelectTenant={(id) => setCurrentTenantId(id)}
-            onNavigateToDashboard={(id) => {
-              setCurrentTenantId(id);
-              setActiveView('CLIENT_DASHBOARD');
-            }}
+            onSelectTenant={setCurrentTenantId}
+            waiterCalls={waiterCalls}
+            tableNumber={tableNumber}
+            setTableNumber={setTableNumber}
+            currentUser={currentUser}
+            onOpenAuthModal={() => setIsAuthModalOpen(true)}
           />
-        )}
 
-        {activeView === 'ARCHITECTURE' && (
-          <ArchitectureHub tenants={tenants} />
-        )}
-      </main>
+          <main className="flex-1 pb-16 md:pb-0">
+            {activeView === 'PUBLIC_MENU' && (
+              <CustomerUI
+                tenant={currentTenant}
+                tableNumber={tableNumber}
+                onCallWaiter={handleCallWaiter}
+                onPlaceOrder={handlePlaceOrder}
+                onOpenDashboard={() => setActiveView('CLIENT_DASHBOARD')}
+                activeOrders={orders.filter(o => o.tenantId === currentTenant.id)}
+              />
+            )}
+
+            {activeView === 'CLIENT_DASHBOARD' && (
+              <RestaurantDashboard
+                tenant={currentTenant}
+                onUpdateTenant={handleUpdateTenant}
+                onSwitchToPublicMenu={(t) => {
+                  if (t) setTableNumber(t);
+                  setActiveView('PUBLIC_MENU');
+                }}
+                waiterCalls={waiterCalls}
+                onDismissWaiterCall={handleDismissWaiterCall}
+                onBackToSuperAdmin={() => setActiveView('SUPER_ADMIN')}
+                onOpenTasTripDashboard={() => setActiveView('TASTE_TRIP')}
+              />
+            )}
+
+            {activeView === 'PRO_OPERATIONS' && (
+              canAccessProOperations ? (
+                <ProPosKot
+                  tenant={currentTenant}
+                  orders={orders.filter(o => o.tenantId === currentTenant.id)}
+                  onUpdateOrderStatus={handleUpdateOrderStatus}
+                  onAddNewOrder={handleAddNewOrder}
+                  onOpenCustomerMenu={() => setActiveView('PUBLIC_MENU')}
+                />
+              ) : (
+                <RbacBarrier
+                  requiredTier="PRO"
+                  currentTier={currentUser?.tier || 'FREE'}
+                  featureName="Pro POS Terminal & Kitchen Display System (KDS)"
+                  onUpgrade={() => {
+                    handleUpdateTenant({ ...currentTenant, tier: 'PRO' });
+                    if (currentUser) {
+                      setCurrentUser({ ...currentUser, tier: 'PRO' });
+                    }
+                  }}
+                  onSwitchUser={() => setIsAuthModalOpen(true)}
+                  onGoBack={() => setActiveView('CLIENT_DASHBOARD')}
+                />
+              )
+            )}
+
+            {activeView === 'SUPER_ADMIN' && (
+              canAccessSuperAdmin ? (
+                <SuperAdminPanel
+                  tenants={tenants}
+                  onSelectTenant={(id) => setCurrentTenantId(id)}
+                  onUpdateTenantStatus={handleUpdateTenantStatus}
+                  onCreateTenant={handleCreateTenant}
+                  onSwitchToTenantDashboard={(id) => {
+                    setCurrentTenantId(id);
+                    setActiveView('CLIENT_DASHBOARD');
+                  }}
+                  onNavigateToTasteTrip={() => setActiveView('TASTE_TRIP')}
+                  onUpdateTenant={handleUpdateTenant}
+                  drivers={drivers}
+                />
+              ) : (
+                <RbacBarrier
+                  requiredRole="SUPER_ADMIN"
+                  currentRole={currentUser?.role}
+                  currentTier={currentUser?.tier || 'FREE'}
+                  featureName="Ceyteq Master Cloud Management Console"
+                  onSwitchUser={() => setIsAuthModalOpen(true)}
+                  onGoBack={() => setActiveView('CLIENT_DASHBOARD')}
+                />
+              )
+            )}
+
+            {activeView === 'SECURITY_CENTER' && (
+              <SecurityCenter
+                currentUser={currentUser}
+                onOpenAuthModal={() => setIsAuthModalOpen(true)}
+              />
+            )}
+
+            {(activeView === 'TASTE_TRIP' || (activeView as any) === 'TASTRIP_DASHBOARD') && (
+              <TasteTripEcosystem
+                tenants={tenants}
+                drivers={drivers}
+                deployments={deployments}
+                onBackToDigitalRace={() => setActiveView('CLIENT_DASHBOARD')}
+                onSelectTenant={(id) => setCurrentTenantId(id)}
+              />
+            )}
+
+            {activeView === 'ANALYTICS' && (
+              <AnalyticsDashboard
+                tenants={tenants}
+                currentTenantId={currentTenantId}
+                onSelectTenant={(id) => setCurrentTenantId(id)}
+                onNavigateToDashboard={(id) => {
+                  setCurrentTenantId(id);
+                  setActiveView('CLIENT_DASHBOARD');
+                }}
+              />
+            )}
+
+            {activeView === 'ARCHITECTURE' && (
+              <ArchitectureHub tenants={tenants} />
+            )}
+          </main>
+        </div>
+
+        {/* Enterprise Authentication, OTP & 2FA Modal */}
+        <SecurityAuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          currentUser={currentUser}
+          onLoginSuccess={(user) => {
+            setCurrentUser(user);
+          }}
+          onLogout={() => {
+            setCurrentUser(null);
+          }}
+        />
       </div>
-    </div>
+    </GlobalErrorBoundary>
   );
 }

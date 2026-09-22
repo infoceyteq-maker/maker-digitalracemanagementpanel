@@ -32,11 +32,13 @@ import {
   XCircle,
   Bike,
   Sliders,
-  ChefHat
+  ChefHat,
+  Bot
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Tenant, Product, Category, WaiterRequest, SubscriptionTier, ThemePalette, UserRole, SocialLinks } from '../types';
 import { THEME_PALETTES } from '../lib/themePalettes';
+import { WhatsAppBotManager } from './WhatsAppBotManager';
 
 interface RestaurantDashboardProps {
   tenant: Tenant;
@@ -57,7 +59,7 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
   onBackToSuperAdmin,
   onOpenTasTripDashboard,
 }) => {
-  const [activeTab, setActiveTab] = useState<'MENU' | 'CATEGORIES' | 'BRANDING' | 'QR_STUDIO' | 'DOMAIN_SETTINGS' | 'WAITER_CALLS' | 'TIER_ROLES' | 'APPROVALS' | 'TASTRIP_APP'>('MENU');
+  const [activeTab, setActiveTab] = useState<'MENU' | 'CATEGORIES' | 'BRANDING' | 'QR_STUDIO' | 'DOMAIN_SETTINGS' | 'WAITER_CALLS' | 'TIER_ROLES' | 'APPROVALS' | 'TASTRIP_APP' | 'AI_WHATSAPP_BOT'>('MENU');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -523,7 +525,7 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
         <div className="flex items-center gap-2 border-b border-sky-100 pb-3 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setActiveTab('MENU')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
               activeTab === 'MENU'
                 ? 'bg-pink-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
@@ -536,7 +538,7 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
 
           <button
             onClick={() => setActiveTab('CATEGORIES')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
               activeTab === 'CATEGORIES'
                 ? 'bg-pink-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
@@ -549,7 +551,7 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
 
           <button
             onClick={() => setActiveTab('BRANDING')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
               activeTab === 'BRANDING'
                 ? 'bg-pink-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
@@ -561,7 +563,7 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
 
           <button
             onClick={() => setActiveTab('TIER_ROLES')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
               activeTab === 'TIER_ROLES'
                 ? 'bg-pink-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
@@ -576,7 +578,7 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
 
           <button
             onClick={() => setActiveTab('APPROVALS')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all relative ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all relative whitespace-nowrap shrink-0 ${
               activeTab === 'APPROVALS'
                 ? 'bg-pink-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
@@ -593,7 +595,7 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
 
           <button
             onClick={() => setActiveTab('QR_STUDIO')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
               activeTab === 'QR_STUDIO'
                 ? 'bg-pink-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
@@ -605,7 +607,7 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
 
           <button
             onClick={() => setActiveTab('DOMAIN_SETTINGS')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
               activeTab === 'DOMAIN_SETTINGS'
                 ? 'bg-pink-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
@@ -620,7 +622,7 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
 
           <button
             onClick={() => setActiveTab('WAITER_CALLS')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
               activeTab === 'WAITER_CALLS'
                 ? 'bg-pink-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
@@ -637,7 +639,7 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
 
           <button
             onClick={() => setActiveTab('TASTRIP_APP')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all relative ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all relative whitespace-nowrap shrink-0 ${
               activeTab === 'TASTRIP_APP'
                 ? 'bg-pink-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
@@ -647,6 +649,21 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
             <span>TasTrip Mobile & Delivery</span>
             <span className="text-[9px] bg-pink-50 text-pink-700 border border-pink-200 px-1.5 py-0.5 rounded font-mono font-bold">
               SOLUTION
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('AI_WHATSAPP_BOT')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all relative whitespace-nowrap shrink-0 ${
+              activeTab === 'AI_WHATSAPP_BOT'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+            }`}
+          >
+            <Bot className="w-4 h-4 text-emerald-500" />
+            <span>WhatsApp AI Bot</span>
+            <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded font-mono font-bold">
+              {tenant.hasAiChatbot ? 'ACTIVE' : 'ADD-ON'}
             </span>
           </button>
         </div>
@@ -1498,7 +1515,7 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
               Configure online ordering, payment gateways, and WhatsApp real-time dispatch alerts.
             </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Delivery Ordering */}
               <div className="p-4 rounded-xl bg-white border border-sky-100 shadow-2xs flex flex-col justify-between">
                 <div>
@@ -1569,6 +1586,49 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
                 <span className={`text-[10px] mt-3 font-bold ${whatsappMessagingEnabled ? 'text-emerald-700' : 'text-slate-400'}`}>
                   {whatsappMessagingEnabled ? '● Auto-Messaging Active' : '○ Disabled'}
                 </span>
+              </div>
+
+              {/* WhatsApp AI Chatbot Add-on */}
+              <div className="p-4 rounded-xl bg-white border border-emerald-200 shadow-2xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                      <Bot className="w-4 h-4 text-emerald-600" />
+                      <span>WhatsApp AI Concierge</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={tenant.hasAiChatbot ?? false}
+                      onChange={(e) => {
+                        onUpdateTenant({
+                          ...tenant,
+                          hasAiChatbot: e.target.checked,
+                          aiChatbotConfig: {
+                            ...tenant.aiChatbotConfig,
+                            enabled: e.target.checked,
+                            autoReplyEnabled: e.target.checked,
+                          } as any,
+                        });
+                      }}
+                      className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Natural language AI bot on WhatsApp handling menu questions, spicy levels, reservations & orders via Gemini.
+                  </p>
+                </div>
+                <div className="flex items-center justify-between mt-3">
+                  <span className={`text-[10px] font-bold ${tenant.hasAiChatbot ? 'text-emerald-700' : 'text-slate-400'}`}>
+                    {tenant.hasAiChatbot ? '● AI Bot Configured' : '○ Add-on Disabled'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('AI_WHATSAPP_BOT')}
+                    className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 underline"
+                  >
+                    Open Bot Studio →
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -2127,6 +2187,13 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB 6: WHATSAPP AI CHATBOT MESSAGING SYSTEM */}
+      {activeTab === 'AI_WHATSAPP_BOT' && (
+        <div className="max-w-6xl mx-auto px-4 sm:px-8 mt-6">
+          <WhatsAppBotManager tenant={tenant} onUpdateTenant={onUpdateTenant} />
         </div>
       )}
 

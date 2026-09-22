@@ -32,10 +32,13 @@ import {
   Check,
   X,
   Filter,
-  Receipt
+  Receipt,
+  Bot,
+  Zap
 } from 'lucide-react';
 import { Tenant, TenantPlan, TenantStatus, SubscriptionTier, DeliveryDriver } from '../types';
 import { CeyteqLogo } from './CeyteqLogo';
+import { CeyteqAiChatbot } from './CeyteqAiChatbot';
 
 interface SuperAdminPanelProps {
   tenants: Tenant[];
@@ -59,7 +62,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
   drivers = [],
 }) => {
   // Navigation tabs within Master Dashboard (Module 1)
-  const [activeTab, setActiveTab] = useState<'CLIENTS' | 'SALES' | 'FLEET' | 'SETTINGS'>('CLIENTS');
+  const [activeTab, setActiveTab] = useState<'CLIENTS' | 'SALES' | 'FLEET' | 'SETTINGS' | 'AI_COPILOT'>('CLIENTS');
 
   // Search and Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,6 +73,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [dnsCheckMessage, setDnsCheckMessage] = useState<string | null>(null);
+  const [isFloatingBotOpen, setIsFloatingBotOpen] = useState(false);
 
   // New Client Form State
   const [newName, setNewName] = useState('');
@@ -78,6 +82,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
   const [newOwnerEmail, setNewOwnerEmail] = useState('');
   const [newTier, setNewTier] = useState<SubscriptionTier>('PRO');
   const [newCustomDomain, setNewCustomDomain] = useState('');
+  const [newHasAiChatbot, setNewHasAiChatbot] = useState<boolean>(true);
 
   // Auto-slug generator
   const handleNameChange = (val: string) => {
@@ -105,13 +110,23 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
       ownerEmail: newOwnerEmail,
       tier: newTier,
       plan,
-      monthlyFee,
+      monthlyFee: monthlyFee + (newHasAiChatbot && newTier === 'PLUS' ? 29 : 0),
       customDomain: newCustomDomain ? newCustomDomain.trim() : undefined,
       customDomainVerified: false,
       dnsStatus: newCustomDomain ? 'PENDING' : 'NOT_CONFIGURED',
       deliveryEnabled: newTier !== 'FREE',
       paymentGatewayEnabled: newTier !== 'FREE',
       whatsappMessagingEnabled: newTier !== 'FREE',
+      hasAiChatbot: newHasAiChatbot,
+      aiChatbotConfig: {
+        enabled: newHasAiChatbot,
+        whatsappPhoneNumberId: '',
+        whatsappVerifyToken: 'ceyteq_wa_verify_token',
+        autoReplyEnabled: true,
+        botTone: 'POLITE_CONCIERGE',
+        welcomeMessage: `Welcome to ${newName}! How can I help you today?`,
+        conversationsCount: 0,
+      },
     });
 
     setIsCreateModalOpen(false);
@@ -121,6 +136,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
     setNewOwnerEmail('');
     setNewCustomDomain('');
     setNewTier('PRO');
+    setNewHasAiChatbot(true);
   };
 
   // Instant Tier Switcher Handler
@@ -304,6 +320,21 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
             <Server className="w-4 h-4 text-[#0098CC]" />
             <span>Edge Infrastructure & DNS</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('AI_COPILOT')}
+            className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${
+              activeTab === 'AI_COPILOT'
+                ? 'border-emerald-500 text-emerald-700'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Bot className="w-4 h-4 text-emerald-600" />
+            <span>Jasmine AI Copilot</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-700 font-mono border border-emerald-200">
+              FREE NLP
+            </span>
+          </button>
         </div>
       </header>
 
@@ -431,7 +462,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
 
           {/* Clients Table */}
           <div className="bg-white/95 border border-sky-100 rounded-2xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs text-slate-700">
                 <thead className="bg-sky-50/80 text-slate-600 uppercase text-[10px] tracking-wider font-semibold border-b border-sky-100">
                   <tr>
@@ -550,6 +581,12 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
                                 Taste Trip
                               </span>
                             )}
+                            {t.hasAiChatbot && (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-0.5" title="AI WhatsApp Chatbot Messaging System Enabled">
+                                <Bot className="w-2.5 h-2.5" />
+                                <span>WhatsApp AI</span>
+                              </span>
+                            )}
                           </div>
                         </td>
 
@@ -597,6 +634,83 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
                   })}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mobile Responsive Client Cards (Visible exclusively on mobile screens < 768px) */}
+            <div className="md:hidden divide-y divide-sky-100">
+              {filteredTenants.map((t) => {
+                const isActive = t.status === 'ACTIVE';
+                const isPro = t.tier === 'PRO';
+                const isPlus = t.tier === 'PLUS';
+
+                return (
+                  <div key={t.id} className="p-4 space-y-3 bg-white">
+                    {/* Header: Logo, Name, Tier & Status Switch */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <img 
+                          src={t.logoUrl} 
+                          alt={t.name}
+                          className="w-11 h-11 rounded-xl object-cover border border-sky-200 bg-white shrink-0 shadow-xs"
+                        />
+                        <div>
+                          <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5 flex-wrap">
+                            <span>{t.name}</span>
+                            <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded ${
+                              isPro ? 'bg-pink-50 text-pink-700 border border-pink-200' :
+                              isPlus ? 'bg-sky-50 text-sky-700 border border-sky-200' :
+                              'bg-slate-100 text-slate-600'
+                            }`}>
+                              {t.tier}
+                            </span>
+                          </div>
+                          <div className="text-slate-500 text-[11px]">{t.ownerName} • {t.ownerEmail}</div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => onUpdateTenantStatus(t.id, isActive ? 'SUSPENDED' : 'ACTIVE')}
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 shrink-0 ${
+                          isActive 
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                            : 'bg-pink-50 text-pink-700 border border-pink-200'
+                        }`}
+                      >
+                        <Power className="w-3 h-3" />
+                        <span>{isActive ? 'Active' : 'Suspended'}</span>
+                      </button>
+                    </div>
+
+                    {/* Subdomain & Tier Pricing Box */}
+                    <div className="flex items-center justify-between text-xs bg-slate-50 p-2.5 rounded-xl border border-sky-100/80 font-mono">
+                      <span className="text-slate-700 truncate max-w-[180px]">{t.subdomain}.ceyteq.com</span>
+                      <span className="font-bold text-slate-900 font-sans">
+                        {isPro ? '$129/mo' : isPlus ? '$49/mo' : 'Free'}
+                      </span>
+                    </div>
+
+                    {/* Mobile Touch Action Buttons */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        onClick={() => setEditingTenant({ ...t })}
+                        className="py-2 px-3 rounded-xl bg-white hover:bg-sky-50 text-slate-700 border border-sky-200 text-xs font-semibold shadow-2xs flex items-center justify-center gap-1.5 shrink-0"
+                        title="Configure Settings"
+                      >
+                        <Settings className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Settings</span>
+                      </button>
+
+                      <button
+                        onClick={() => onSwitchToTenantDashboard(t.id)}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-sky-50 hover:bg-[#00C8FF] text-[#008BB8] hover:text-[#0A192F] text-xs font-bold border border-sky-200 transition-all shadow-xs"
+                      >
+                        <span>Enter Dashboard</span>
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -867,6 +981,22 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
         </div>
       )}
 
+      {/* TAB 5: JASMINE AI COPILOT */}
+      {activeTab === 'AI_COPILOT' && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 mt-6">
+          <div className="mb-4">
+            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Bot className="w-5 h-5 text-emerald-600" />
+              <span>Ceyteq Management AI Copilot (Jasmine)</span>
+            </h2>
+            <p className="text-xs text-slate-500">
+              Agency-level conversational assistant powered by Google Gemini NLP for tenant management, client tier analysis, and WhatsApp bot configuration.
+            </p>
+          </div>
+          <CeyteqAiChatbot tenants={tenants} />
+        </div>
+      )}
+
       {/* MODAL 1: PROVISION NEW RESTAURANT CLIENT */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
@@ -983,6 +1113,34 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
                     <div className="text-[9px] text-slate-500 mt-1">POS, KOT & App</div>
                   </button>
                 </div>
+              </div>
+
+              {/* AI Chatbot Messaging System Package Add-on Toggle */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-50/90 to-teal-50/90 border border-emerald-200">
+                <label className="flex items-start justify-between cursor-pointer gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                      <Bot className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-bold text-slate-900">AI Chatbot Messaging System</span>
+                        <span className="text-[9px] bg-emerald-600 text-white font-black px-1.5 py-0.5 rounded">
+                          {newTier === 'PRO' ? 'INCLUDED IN PRO' : 'PRO / PLUS ADD-ON (+$29/mo)'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-1 leading-snug">
+                        Equips the restaurant with a WhatsApp-integrated AI concierge powered by Gemini NLP for 24/7 guest inquiries, reservations & automated menu orders.
+                      </p>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={newHasAiChatbot}
+                    onChange={(e) => setNewHasAiChatbot(e.target.checked)}
+                    className="rounded accent-emerald-600 w-4 h-4 mt-1.5 cursor-pointer shrink-0"
+                  />
+                </label>
               </div>
 
               <div>
@@ -1138,6 +1296,19 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
                     className="rounded accent-[#00A3D9]"
                   />
                 </label>
+
+                <label className="flex items-center justify-between text-xs text-slate-800 cursor-pointer p-2 rounded-lg bg-emerald-50/80 border border-emerald-200">
+                  <div className="flex items-center gap-2">
+                    <Bot className="w-4 h-4 text-emerald-600" />
+                    <span className="font-bold">AI Chatbot Messaging System (WhatsApp & NLP)</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editingTenant.hasAiChatbot ?? false}
+                    onChange={(e) => setEditingTenant({ ...editingTenant, hasAiChatbot: e.target.checked })}
+                    className="rounded accent-emerald-600 w-4 h-4"
+                  />
+                </label>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-sky-100">
@@ -1158,6 +1329,28 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* Floating Copilot Toggle & Window */}
+      {!isFloatingBotOpen && activeTab !== 'AI_COPILOT' && (
+        <button
+          onClick={() => setIsFloatingBotOpen(true)}
+          className="fixed bottom-6 right-6 z-40 px-4 py-3 rounded-full bg-gradient-to-r from-[#008BB8] to-[#0A192F] text-white shadow-xl hover:shadow-2xl hover:scale-105 transition-all flex items-center gap-2 border border-sky-300/30"
+          title="Open Jasmine AI Master Copilot"
+        >
+          <Bot className="w-5 h-5 text-[#00C8FF]" />
+          <span className="text-xs font-bold hidden sm:inline">Jasmine AI Copilot</span>
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+        </button>
+      )}
+
+      {isFloatingBotOpen && activeTab !== 'AI_COPILOT' && (
+        <CeyteqAiChatbot
+          tenants={tenants}
+          isFloating
+          isOpen={isFloatingBotOpen}
+          onClose={() => setIsFloatingBotOpen(false)}
+        />
       )}
     </div>
   );
