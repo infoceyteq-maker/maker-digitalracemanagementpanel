@@ -128,9 +128,13 @@ export default function App() {
     } else if (portal === 'pos' || portal === 'kitchen' || portal === 'kot') {
       setActiveView('PRO_OPERATIONS');
       if (standaloneParam !== 'false') setIsStandalone(true);
-    } else if (portal === 'master' || portal === 'super') {
+    } else if (portal === 'master' || portal === 'super' || portal === 'digitalrace' || portal === 'tastetrip' || portal === 'division') {
       setActiveView('SUPER_ADMIN');
       if (standaloneParam === 'true') setIsStandalone(true);
+    }
+
+    if (params.get('login') === 'true') {
+      setIsAuthModalOpen(true);
     }
 
     if (table) {
