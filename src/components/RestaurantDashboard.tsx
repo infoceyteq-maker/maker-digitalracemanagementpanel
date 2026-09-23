@@ -38,7 +38,6 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import { Tenant, Product, Category, WaiterRequest, SubscriptionTier, ThemePalette, UserRole, SocialLinks } from '../types';
 import { THEME_PALETTES } from '../lib/themePalettes';
-import { AiAgentChat } from './AiAgentChat';
 import { WhatsAppBotManager } from './WhatsAppBotManager';
 
 interface RestaurantDashboardProps {
@@ -174,48 +173,6 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
       onUpdateTenant({ ...tenant, products: updatedProducts });
     }
     setEditingPriceId(null);
-  };
-
-  // ==========================================================
-  // AUTONOMOUS AI AGENT CALLBACKS (AiAgentChat tool results)
-  // ==========================================================
-
-  // changeThemeColor tool result -> apply to live tenant branding
-  const handleAiThemeColorChange = (newHex?: string) => {
-    if (!newHex || !/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(newHex)) return;
-    onUpdateTenant({ ...tenant, accentColor: newHex });
-    // Keep the Branding tab form in sync so the UI reflects the change.
-    setBrandingForm((prev) => ({ ...prev, accentColor: newHex }));
-  };
-
-  // addMenuItem tool result -> append a real Product to the tenant catalog
-  const handleAiMenuItemAdded = (item: any) => {
-    if (!item?.name) return;
-    const isFrontDraft = activeRole === 'FRONT';
-    const categoryName = String(item.category || '');
-    const matchedCategory = tenant.categories.find(
-      (c) =>
-        c.name.toLowerCase() === categoryName.toLowerCase() ||
-        (c.nameSi || '').toLowerCase() === categoryName.toLowerCase()
-    );
-    const created: Product = {
-      id: item.itemId || `p-${Date.now()}`,
-      name: String(item.name),
-      nameSi: '',
-      description: item.description || '',
-      descriptionSi: '',
-      price: Number(item.price) || 0,
-      currency: tenant.currency,
-      categoryId: matchedCategory?.id || tenant.categories[0]?.id || 'cat-mains',
-      imageUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&auto=format&fit=crop&q=80',
-      isAvailable: isFrontDraft ? false : item.isAvailable !== false,
-      isSpicy: !!item.isSpicy,
-      isVegetarian: !!item.isVegetarian,
-      preparationTime: '15 mins',
-      approvalStatus: isFrontDraft ? 'PENDING_APPROVAL' : 'PUBLISHED',
-      draftedBy: isFrontDraft ? 'AI Agent' : undefined,
-    };
-    onUpdateTenant({ ...tenant, products: [...tenant.products, created] });
   };
 
   // Add Product Submit
@@ -2370,16 +2327,6 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
           </div>
         </div>
       )}
-
-      {/* Autonomous AI Agent Floating Chat (tool-calling co-pilot) */}
-      <AiAgentChat
-        tenantId={tenant.id}
-        tenantName={tenant.name}
-        primaryColor={tenant.accentColor}
-        userRole={activeRole}
-        onThemeColorChange={handleAiThemeColorChange}
-        onMenuItemAdded={handleAiMenuItemAdded}
-      />
     </div>
   );
 };

@@ -3,9 +3,6 @@ import path from 'path';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { streamText, tool } from 'ai';
-import { z } from 'zod';
 import { createServer as createViteServer } from 'vite';
 import bcrypt from 'bcryptjs';
 import {
@@ -1365,7 +1362,7 @@ Your Responsibilities on WhatsApp:
       });
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
         contents: formattedContents,
         config: {
           systemInstruction,
@@ -1385,122 +1382,6 @@ Your Responsibilities on WhatsApp:
         error: 'Failed to process AI chat request',
         details: error?.message || 'Internal server error',
       });
-    }
-  });
-
-  /**
-   * Vercel AI SDK Autonomous Tool-Calling Agent Route
-   * Used by useChat hook from /app/components/AiAgentChat.tsx
-   */
-  app.post('/api/chat', async (req: Request, res: Response) => {
-    try {
-      const { messages, targetTenantId } = req.body;
-      const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || '';
-
-      if (!apiKey) {
-        // Plain-text body so the client-side useChat hook surfaces a readable
-        // error message instead of a raw JSON blob.
-        res.status(500).send(
-          'AI Agent is not configured yet. Please set GEMINI_API_KEY in your .env file (get a free key from https://aistudio.google.com/apikey) and restart the server.'
-        );
-        return;
-      }
-
-      // gemini-1.5-flash has been retired by Google. Default to the current
-      // stable flash model; override with the GEMINI_MODEL env var if needed.
-      const modelName = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-
-      const googleSdk = createGoogleGenerativeAI({ apiKey });
-      const tenantId = targetTenantId || 'd0000000-0000-0000-0000-000000000001';
-
-      const result = streamText({
-        model: googleSdk(modelName),
-        system: `You are the "Ceyteq Digital Race Autonomous AI Restaurant Operations Assistant" for tenant ${tenantId}.
-You execute real system commands via tool calls:
-- addMenuItem: Adds dishes/drinks to the restaurant catalog.
-- changeThemeColor: Updates the primary brand/theme color.
-- queryRestaurantData: Retrieves operational metrics.
-Be concise, professional, and invoke tools immediately when asked.`,
-        messages,
-        maxSteps: 5,
-        tools: {
-          addMenuItem: tool({
-            description: 'Add a new menu item, beverage, or dessert to the restaurant catalog and POS.',
-            parameters: z.object({
-              name: z.string().describe('The dish or drink name'),
-              category: z.string().describe('The menu category'),
-              price: z.number().positive().describe('Price in LKR'),
-              description: z.string().optional().describe('Brief description'),
-              isSpicy: z.boolean().optional().default(false),
-              isVegetarian: z.boolean().optional().default(false),
-            }),
-            execute: async ({ name, category, price, description, isSpicy, isVegetarian }) => {
-              console.log(`[EXPRESS_TOOL: addMenuItem] Added "${name}" under ${category} for LKR ${price}`);
-              return {
-                success: true,
-                itemId: `item-${Date.now()}`,
-                name,
-                category,
-                price,
-                description,
-                isSpicy: !!isSpicy,
-                isVegetarian: !!isVegetarian,
-                currency: 'LKR',
-                formattedPrice: `LKR ${price.toLocaleString()}`,
-                message: `Successfully created and published "${name}" in "${category}" for LKR ${price.toLocaleString()}.`,
-              };
-            },
-          }),
-          changeThemeColor: tool({
-            description: 'Update the primary brand/theme color for the restaurant.',
-            parameters: z.object({
-              hexColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/),
-              colorName: z.string().optional(),
-            }),
-            execute: async ({ hexColor, colorName }) => {
-              console.log(`[EXPRESS_TOOL: changeThemeColor] Updated theme to ${hexColor}`);
-              return {
-                success: true,
-                hexColor,
-                colorName: colorName || hexColor,
-                message: `Theme color updated to ${colorName || hexColor} (${hexColor}).`,
-              };
-            },
-          }),
-          queryRestaurantData: tool({
-            description: 'Query operational metrics or table status.',
-            parameters: z.object({
-              metricType: z.enum(['OVERVIEW', 'MENU_STATS', 'TABLE_STATUS']),
-            }),
-            execute: async ({ metricType }) => {
-              return {
-                success: true,
-                metricType,
-                data: {
-                  restaurantName: 'The Ceyteq Grand Bistro',
-                  activeOrders: 8,
-                  revenueToday: 'LKR 148,200',
-                  occupiedTables: '14 / 24',
-                },
-              };
-            },
-          }),
-        },
-      });
-
-      result.pipeDataStreamToResponse(res, {
-        // Surface readable error messages to the client instead of generic ones.
-        getErrorMessage: (err: any) => {
-          console.error('[API_CHAT_STREAM_ERROR]', err);
-          return (
-            err?.message ||
-            'The AI agent failed to generate a response. Please check the server logs and try again.'
-          );
-        },
-      });
-    } catch (err: any) {
-      console.error('[API_CHAT_EXPRESS_ERROR]', err);
-      res.status(500).send(err?.message || 'Agent error');
     }
   });
 
@@ -1572,7 +1453,7 @@ Be concise, professional, and invoke tools immediately when asked.`,
                 if (ai && messageText) {
                   try {
                     const response = await ai.models.generateContent({
-                      model: 'gemini-3.8-flash',
+                      model: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
                       contents: [{ role: 'user', parts: [{ text: messageText }] }],
                       config: {
                         systemInstruction: `You are the WhatsApp AI Concierge for a premier restaurant powered by Ceyteq Digital Race. Greet ${contactName} warmly and assist with menu recommendations, reservation inquiries, and food orders concisely with emojis.`,
@@ -1651,7 +1532,7 @@ Instructions:
         formattedContents.push({ role: 'user', parts: [{ text: message }] });
 
         const response = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
+          model: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
           contents: formattedContents,
           config: { systemInstruction },
         });
