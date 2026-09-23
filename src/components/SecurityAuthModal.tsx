@@ -22,8 +22,10 @@ import {
   Clock,
   X
 } from 'lucide-react';
-import { AuthUser, SubscriptionTier, UserRole } from '../types';
+import { AuthUser, SubscriptionTier, UserRole, Tenant } from '../types';
 import { CeyteqLogo } from './CeyteqLogo';
+import { credentialsService, RoleCredentials } from '../lib/credentialsService';
+import { Copy, Key, Trash2, Sparkles as SparklesIcon } from 'lucide-react';
 
 interface SecurityAuthModalProps {
   isOpen: boolean;
@@ -31,6 +33,10 @@ interface SecurityAuthModalProps {
   currentUser: AuthUser | null;
   onLoginSuccess: (user: AuthUser, token: string) => void;
   onLogout: () => void;
+  tenants?: Tenant[];
+  onClearDemoOrders?: () => void;
+  onResetAllDemoData?: (cleanStarterRestaurant?: boolean) => void;
+  onOpenCreateRestaurant?: () => void;
 }
 
 export const SecurityAuthModal: React.FC<SecurityAuthModalProps> = ({
@@ -39,11 +45,77 @@ export const SecurityAuthModal: React.FC<SecurityAuthModalProps> = ({
   currentUser,
   onLoginSuccess,
   onLogout,
+  tenants = [],
+  onClearDemoOrders,
+  onResetAllDemoData,
+  onOpenCreateRestaurant,
 }) => {
-  // Tabs: 'SIGN_IN' | 'REGISTER' | 'VERIFY_OTP' | 'MFA_CHALLENGE' | 'MFA_SETUP' | 'ROLE_SWITCHER'
-  const [flowStep, setFlowStep] = useState<'SIGN_IN' | 'REGISTER' | 'VERIFY_OTP' | 'MFA_CHALLENGE' | 'MFA_SETUP' | 'ROLE_SWITCHER'>(
-    currentUser ? 'ROLE_SWITCHER' : 'SIGN_IN'
+  // Tabs: 'SIGN_IN' | 'REGISTER' | 'VERIFY_OTP' | 'MFA_CHALLENGE' | 'MFA_SETUP' | 'ROLE_SWITCHER' | 'PASSWORDS_MANAGER' | 'DATA_CLEANUP'
+  const [flowStep, setFlowStep] = useState<'SIGN_IN' | 'REGISTER' | 'VERIFY_OTP' | 'MFA_CHALLENGE' | 'MFA_SETUP' | 'ROLE_SWITCHER' | 'PASSWORDS_MANAGER' | 'DATA_CLEANUP'>(
+    'PASSWORDS_MANAGER'
   );
+
+  // Saved Passwords State
+  const [roleCreds, setRoleCreds] = useState<RoleCredentials>(() => credentialsService.getCredentials());
+  const [selectedTenantForCreds, setSelectedTenantForCreds] = useState<string>(tenants?.[0]?.id || 'tenant-1');
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Form edit fields for passwords
+  const [superAdminPassInput, setSuperAdminPassInput] = useState(roleCreds.superAdminPassword);
+  const [kitchenPinInput, setKitchenPinInput] = useState(roleCreds.defaultKitchenPin);
+  const [waiterPinInput, setWaiterPinInput] = useState(roleCreds.defaultWaiterPin);
+  const [tenantPassInput, setTenantPassInput] = useState(
+    roleCreds.tenantPasswords[selectedTenantForCreds]?.ownerPassword || 'owner@pass2026'
+  );
+  const [tenantEmailInput, setTenantEmailInput] = useState(
+    roleCreds.tenantPasswords[selectedTenantForCreds]?.ownerEmail || 'owner@restaurant.com'
+  );
+
+  // When selected tenant changes in password manager, sync inputs
+  const handleTenantCredsSelect = (tenantId: string) => {
+    setSelectedTenantForCreds(tenantId);
+    const existing = roleCreds.tenantPasswords[tenantId];
+    const foundTenant = tenants?.find((t: Tenant) => t.id === tenantId);
+    setTenantEmailInput(existing?.ownerEmail || foundTenant?.ownerEmail || 'owner@restaurant.com');
+    setTenantPassInput(existing?.ownerPassword || foundTenant?.ownerPassword || 'owner@pass2026');
+  };
+
+  // Save Super Admin Password
+  const handleSaveSuperAdminPass = () => {
+    credentialsService.setSuperAdminPassword(superAdminPassInput);
+    setRoleCreds(credentialsService.getCredentials());
+    setStatusMessage({ type: 'success', text: 'Master Admin Password updated and saved!' });
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  // Save Restaurant Owner Password
+  const handleSaveTenantPass = () => {
+    credentialsService.setTenantPassword(
+      selectedTenantForCreds,
+      tenantEmailInput,
+      tenantPassInput,
+      kitchenPinInput,
+      waiterPinInput
+    );
+    setRoleCreds(credentialsService.getCredentials());
+    setStatusMessage({ type: 'success', text: 'Restaurant Owner credentials updated and saved!' });
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  // Save Kitchen & Waiter PINs
+  const handleSaveStaffPins = () => {
+    credentialsService.setKitchenPin(kitchenPinInput, selectedTenantForCreds);
+    credentialsService.setWaiterPin(waiterPinInput, selectedTenantForCreds);
+    setRoleCreds(credentialsService.getCredentials());
+    setStatusMessage({ type: 'success', text: 'Kitchen and Waiter PINs updated successfully!' });
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  const handleCopyText = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
 
   // Form states
   const [email, setEmail] = useState('owner@ceylonspice.com');
@@ -307,16 +379,42 @@ export const SecurityAuthModal: React.FC<SecurityAuthModalProps> = ({
           {/* Navigation Pill Buttons */}
           <div className="flex items-center gap-1.5 mt-4 pt-3 border-t border-white/10 overflow-x-auto no-scrollbar">
             <button
+              onClick={() => setFlowStep('PASSWORDS_MANAGER')}
+              className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                flowStep === 'PASSWORDS_MANAGER' ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black' : 'text-slate-300 hover:text-white bg-white/5'
+              }`}
+            >
+              <Key className="w-3.5 h-3.5" />
+              <span>Passwords & PINs (මුරපද)</span>
+            </button>
+            <button
+              onClick={() => setFlowStep('DATA_CLEANUP')}
+              className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                flowStep === 'DATA_CLEANUP' ? 'bg-amber-400 text-slate-900 shadow-sm font-black' : 'text-slate-300 hover:text-white bg-white/5'
+              }`}
+            >
+              <Trash2 className="w-3.5 h-3.5 text-amber-300" />
+              <span>Clear Demo Data</span>
+            </button>
+            <button
               onClick={() => setFlowStep('SIGN_IN')}
-              className={`text-xs px-3 py-1 rounded-lg font-bold transition-all ${
+              className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all shrink-0 ${
                 flowStep === 'SIGN_IN' ? 'bg-[#00C8FF] text-[#0A192F]' : 'text-slate-300 hover:text-white'
               }`}
             >
               Sign In
             </button>
             <button
+              onClick={() => setFlowStep('ROLE_SWITCHER')}
+              className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all shrink-0 ${
+                flowStep === 'ROLE_SWITCHER' ? 'bg-[#00C8FF] text-[#0A192F]' : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              RBAC Role Switcher
+            </button>
+            <button
               onClick={() => setFlowStep('VERIFY_OTP')}
-              className={`text-xs px-3 py-1 rounded-lg font-bold transition-all ${
+              className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all shrink-0 ${
                 flowStep === 'VERIFY_OTP' ? 'bg-[#00C8FF] text-[#0A192F]' : 'text-slate-300 hover:text-white'
               }`}
             >
@@ -324,19 +422,11 @@ export const SecurityAuthModal: React.FC<SecurityAuthModalProps> = ({
             </button>
             <button
               onClick={() => setFlowStep('MFA_CHALLENGE')}
-              className={`text-xs px-3 py-1 rounded-lg font-bold transition-all ${
+              className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all shrink-0 ${
                 flowStep === 'MFA_CHALLENGE' ? 'bg-[#00C8FF] text-[#0A192F]' : 'text-slate-300 hover:text-white'
               }`}
             >
               2FA / MFA
-            </button>
-            <button
-              onClick={() => setFlowStep('ROLE_SWITCHER')}
-              className={`text-xs px-3 py-1 rounded-lg font-bold transition-all ${
-                flowStep === 'ROLE_SWITCHER' ? 'bg-[#00C8FF] text-[#0A192F]' : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              RBAC Role Switcher
             </button>
           </div>
         </div>
@@ -615,6 +705,364 @@ export const SecurityAuthModal: React.FC<SecurityAuthModalProps> = ({
                   );
                 })}
               </div>
+            </div>
+          )}
+          {/* STEP 5: PASSWORDS & CREDENTIALS MANAGER */}
+          {flowStep === 'PASSWORDS_MANAGER' && (
+            <div className="space-y-4 max-h-[460px] overflow-y-auto pr-1">
+              <div className="bg-sky-50/80 border border-sky-200 rounded-2xl p-3.5 flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-[#008BB8] text-white flex items-center justify-center shrink-0 mt-0.5">
+                    <Key className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-900">Separate Role Passwords & Staff PINs</h3>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      වෙන වෙනම සෑම Role එකක් සඳහාම (Master Admin, Restaurant Owner, Kitchen, Waiter) Password සහ PIN වෙනස් කර Save කරගත හැක.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 1: CEYTEQ SUPER ADMIN */}
+              <div className="bg-white border border-sky-100 rounded-2xl p-4 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-pink-500" />
+                    <span className="text-xs font-black text-slate-900 uppercase">1. Ceyteq Master Admin</span>
+                  </div>
+                  <span className="text-[10px] bg-pink-50 text-pink-700 font-bold px-2 py-0.5 rounded-full border border-pink-200">
+                    Highest Clearance
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Super Admin Email</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={roleCreds.superAdminEmail}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono text-slate-700 cursor-not-allowed text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Master Password</label>
+                    <input
+                      type="text"
+                      value={superAdminPassInput}
+                      onChange={(e) => setSuperAdminPassInput(e.target.value)}
+                      placeholder="Enter new master password"
+                      className="w-full bg-white border border-sky-300 rounded-xl px-3 py-2 font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00C8FF] text-xs font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(`Email: ${roleCreds.superAdminEmail}\nPassword: ${superAdminPassInput}`, 'superadmin')}
+                    className="text-[11px] font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{copiedKey === 'superadmin' ? 'Copied to Clipboard!' : 'Copy Credentials'}</span>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleSaveSuperAdminPass();
+                        onLoginSuccess({
+                          id: 'user-superadmin-1',
+                          email: roleCreds.superAdminEmail,
+                          name: 'Ceyteq Master Admin',
+                          role: 'SUPER_ADMIN',
+                          tier: 'PRO',
+                          isEmailVerified: true,
+                          mfaEnabled: true,
+                          status: 'ACTIVE',
+                          failedLoginAttempts: 0,
+                        }, 'mock-token-superadmin');
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 text-[11px] font-bold border border-pink-200 transition-all"
+                    >
+                      Login As Master Admin
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveSuperAdminPass}
+                      className="px-3 py-1.5 rounded-xl bg-[#00C8FF] hover:bg-[#00B2E3] text-[#0A192F] text-[11px] font-black shadow-xs transition-all"
+                    >
+                      Save Password
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 2: RESTAURANT OWNER CREDENTIALS */}
+              <div className="bg-white border border-sky-100 rounded-2xl p-4 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-black text-slate-900 uppercase">2. Restaurant Owner Password</span>
+                  </div>
+                  <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                    Per-Restaurant
+                  </span>
+                </div>
+
+                {/* Restaurant Selector */}
+                {tenants && tenants.length > 0 && (
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Select Restaurant to Configure:</label>
+                    <select
+                      value={selectedTenantForCreds}
+                      onChange={(e) => handleTenantCredsSelect(e.target.value)}
+                      className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 cursor-pointer focus:outline-none focus:border-[#00C8FF]"
+                    >
+                      {tenants.map((t: Tenant) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} ({t.slug}) - {t.ownerName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Owner Email</label>
+                    <input
+                      type="email"
+                      value={tenantEmailInput}
+                      onChange={(e) => setTenantEmailInput(e.target.value)}
+                      className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 font-mono text-slate-800 text-xs focus:outline-none focus:ring-2 focus:ring-[#00C8FF]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Owner Admin Password</label>
+                    <input
+                      type="text"
+                      value={tenantPassInput}
+                      onChange={(e) => setTenantPassInput(e.target.value)}
+                      placeholder="e.g. spice@owner2026"
+                      className="w-full bg-white border border-sky-300 rounded-xl px-3 py-2 font-mono text-slate-900 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#00C8FF]"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(`Restaurant: ${tenants?.find((t: Tenant) => t.id === selectedTenantForCreds)?.name}\nEmail: ${tenantEmailInput}\nPassword: ${tenantPassInput}`, 'tenant-creds')}
+                    className="text-[11px] font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{copiedKey === 'tenant-creds' ? 'Copied!' : 'Copy Owner Login'}</span>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleSaveTenantPass();
+                        const targetT = tenants?.find((t: Tenant) => t.id === selectedTenantForCreds);
+                        onLoginSuccess({
+                          id: `owner-${selectedTenantForCreds}`,
+                          email: tenantEmailInput,
+                          name: targetT?.ownerName || 'Restaurant Owner',
+                          role: 'ADMIN',
+                          tier: targetT?.tier || 'PRO',
+                          isEmailVerified: true,
+                          mfaEnabled: false,
+                          status: 'ACTIVE',
+                          failedLoginAttempts: 0,
+                        }, 'mock-token-owner');
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-bold border border-emerald-200 transition-all"
+                    >
+                      Login As This Owner
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveTenantPass}
+                      className="px-3 py-1.5 rounded-xl bg-[#008BB8] hover:bg-[#007A9E] text-white text-[11px] font-bold shadow-xs transition-all"
+                    >
+                      Save Owner Pass
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 3: STAFF & KITCHEN TERMINAL PINS */}
+              <div className="bg-white border border-sky-100 rounded-2xl p-4 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span className="text-xs font-black text-slate-900 uppercase">3. Staff Terminal Security PINs</span>
+                  </div>
+                  <span className="text-[10px] bg-amber-50 text-amber-800 font-bold px-2 py-0.5 rounded-full border border-amber-200">
+                    Fast 4-Digit PIN
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Kitchen Display (KOT) PIN</label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={kitchenPinInput}
+                      onChange={(e) => setKitchenPinInput(e.target.value)}
+                      placeholder="e.g. 2026"
+                      className="w-full bg-white border border-amber-200 rounded-xl px-3 py-2 font-mono text-slate-900 text-xs font-bold text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-1 block">Used by Kitchen chefs on wall displays</span>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Waiter Staff PIN</label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={waiterPinInput}
+                      onChange={(e) => setWaiterPinInput(e.target.value)}
+                      placeholder="e.g. 1122"
+                      className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 font-mono text-slate-900 text-xs font-bold text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-[#00C8FF]"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-1 block">Used by Waiters on mobile handhelds</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(`Kitchen PIN: ${kitchenPinInput}\nWaiter PIN: ${waiterPinInput}`, 'staff-pins')}
+                    className="text-[11px] font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{copiedKey === 'staff-pins' ? 'Copied!' : 'Copy Staff PINs'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveStaffPins}
+                    className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-bold shadow-xs transition-all"
+                  >
+                    Save Staff PINs
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 6: DATA & DEMO CLEANUP */}
+          {flowStep === 'DATA_CLEANUP' && (
+            <div className="space-y-4 max-h-[460px] overflow-y-auto pr-1">
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+                <Trash2 className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-xs font-bold text-amber-900">Clean Demo Data & Real Database Setup</h3>
+                  <p className="text-[11px] text-amber-800 mt-1 leading-relaxed">
+                    ඩෙමෝ සාම්පල ඇණවුම් (Orders) ඉවත් කර පිරිසිදු ආරම්භයක් (Clean Slate) ලබා ගැනීමට මෙතැනින් හැකියාව ඇත.
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Card 1: Clear Orders */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                    <h4 className="text-xs font-bold text-slate-900">1. Clear All Demo Orders (ඇණවුම් ඉවත් කරන්න)</h4>
+                  </div>
+                  <span className="text-[10px] bg-slate-100 text-slate-600 font-mono px-2 py-0.5 rounded">
+                    Wipes to 0 Orders
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Clears all current mock orders and pending table assistance calls across the Kitchen KOT and POS screens so you can start taking genuine customer orders.
+                </p>
+                <div className="pt-1 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onClearDemoOrders) {
+                        onClearDemoOrders();
+                        setStatusMessage({ type: 'success', text: 'All demo orders and table calls have been wiped! Total orders are now 0.' });
+                        setTimeout(() => setStatusMessage(null), 3500);
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear All Mock Orders</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Card 2: Reset to Clean Blank Slate */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
+                    <h4 className="text-xs font-bold text-slate-900">2. Reset Platform to Fresh Clean Slate</h4>
+                  </div>
+                  <span className="text-[10px] bg-sky-50 text-sky-700 font-bold px-2 py-0.5 rounded">
+                    Clean Starter
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Clears all mock demo data and replaces demo restaurants with a single clean starter restaurant ready for your own real food dishes and prices.
+                </p>
+                <div className="pt-1 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onResetAllDemoData) {
+                        onResetAllDemoData(true);
+                        setStatusMessage({ type: 'success', text: 'Platform reset to clean starter restaurant with zero mock orders!' });
+                        setTimeout(() => setStatusMessage(null), 3500);
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Reset to Clean Slate</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Card 3: Provision Real Restaurant */}
+              {onOpenCreateRestaurant && (
+                <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-4 shadow-2xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <SparklesIcon className="w-4 h-4 text-emerald-600" />
+                      <h4 className="text-xs font-bold text-emerald-950">3. Add Real Restaurant (අලුත් අවන්හලක් එක් කරන්න)</h4>
+                    </div>
+                    <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded">
+                      Production Ready
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800 leading-relaxed">
+                    Open the comprehensive Restaurant Provisioning Form to add your genuine restaurant name, custom domain, table count, and owner credentials.
+                  </p>
+                  <div className="pt-1 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenCreateRestaurant();
+                      }}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+                    >
+                      <Building className="w-3.5 h-3.5" />
+                      <span>Open Add Restaurant Form →</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

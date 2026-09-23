@@ -34,11 +34,15 @@ import {
   Filter,
   Receipt,
   Bot,
-  Zap
+  Zap,
+  Key,
+  Trash2,
+  Copy
 } from 'lucide-react';
 import { Tenant, TenantPlan, TenantStatus, SubscriptionTier, DeliveryDriver } from '../types';
 import { CeyteqLogo } from './CeyteqLogo';
 import { CeyteqAiChatbot } from './CeyteqAiChatbot';
+import { credentialsService } from '../lib/credentialsService';
 
 interface SuperAdminPanelProps {
   tenants: Tenant[];
@@ -49,6 +53,9 @@ interface SuperAdminPanelProps {
   onNavigateToTasteTrip?: () => void;
   onUpdateTenant?: (updatedTenant: Tenant) => void;
   drivers?: DeliveryDriver[];
+  onClearDemoOrders?: () => void;
+  onResetAllDemoData?: (cleanStarterRestaurant?: boolean) => void;
+  onOpenAuthModal?: () => void;
 }
 
 export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
@@ -60,6 +67,9 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
   onNavigateToTasteTrip,
   onUpdateTenant,
   drivers = [],
+  onClearDemoOrders,
+  onResetAllDemoData,
+  onOpenAuthModal,
 }) => {
   // Navigation tabs within Master Dashboard (Module 1)
   const [activeTab, setActiveTab] = useState<'CLIENTS' | 'SALES' | 'FLEET' | 'SETTINGS' | 'AI_COPILOT'>('CLIENTS');
@@ -80,9 +90,25 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
   const [newSlug, setNewSlug] = useState('');
   const [newOwnerName, setNewOwnerName] = useState('');
   const [newOwnerEmail, setNewOwnerEmail] = useState('');
+  const [newOwnerPassword, setNewOwnerPassword] = useState('spice@owner2026');
+  const [newKitchenPin, setNewKitchenPin] = useState('2026');
+  const [newWaiterPin, setNewWaiterPin] = useState('1122');
+  const [newPhone, setNewPhone] = useState('+94 77 123 4567');
+  const [newAddress, setNewAddress] = useState('Colombo, Sri Lanka');
+  const [newCurrency, setNewCurrency] = useState<'LKR' | 'USD' | 'EUR' | 'AED'>('LKR');
+  const [newTableCount, setNewTableCount] = useState<number>(15);
   const [newTier, setNewTier] = useState<SubscriptionTier>('PRO');
   const [newCustomDomain, setNewCustomDomain] = useState('');
   const [newHasAiChatbot, setNewHasAiChatbot] = useState<boolean>(true);
+  const [newStarterMenu, setNewStarterMenu] = useState<'STARTER' | 'BLANK'>('STARTER');
+  const [createdNotice, setCreatedNotice] = useState<{
+    name: string;
+    slug: string;
+    email: string;
+    password: string;
+    kitchenPin: string;
+    waiterPin: string;
+  } | null>(null);
 
   // Auto-slug generator
   const handleNameChange = (val: string) => {
@@ -94,6 +120,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
       .replace(/[\s_-]+/g, '-')
       .replace(/^-+|-+$/g, '');
     setNewSlug(generatedSlug);
+    setNewOwnerPassword(`${generatedSlug || 'owner'}@2026`);
   };
 
   const handleCreateSubmit = (e: React.FormEvent) => {
@@ -103,11 +130,18 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
     const monthlyFee = newTier === 'FREE' ? 0 : newTier === 'PLUS' ? 49 : 129;
     const plan: TenantPlan = newTier === 'FREE' ? 'STARTER' : newTier === 'PLUS' ? 'PRO' : 'ENTERPRISE';
 
-    onCreateTenant({
+    const newTenantData: Partial<Tenant> = {
       name: newName,
       slug: newSlug,
       ownerName: newOwnerName,
       ownerEmail: newOwnerEmail,
+      ownerPassword: newOwnerPassword,
+      kitchenPin: newKitchenPin,
+      waiterPin: newWaiterPin,
+      phone: newPhone,
+      address: newAddress,
+      currency: newCurrency,
+      tableCount: Number(newTableCount) || 12,
       tier: newTier,
       plan,
       monthlyFee: monthlyFee + (newHasAiChatbot && newTier === 'PLUS' ? 29 : 0),
@@ -127,6 +161,24 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
         welcomeMessage: `Welcome to ${newName}! How can I help you today?`,
         conversationsCount: 0,
       },
+    };
+
+    if (newStarterMenu === 'BLANK') {
+      newTenantData.categories = [
+        { id: `cat-1-${Date.now()}`, name: 'Main Dishes', nameSi: 'ප්‍රධාන ආහාර', iconName: 'Utensils', order: 1 }
+      ];
+      newTenantData.products = [];
+    }
+
+    onCreateTenant(newTenantData);
+
+    setCreatedNotice({
+      name: newName,
+      slug: newSlug,
+      email: newOwnerEmail,
+      password: newOwnerPassword,
+      kitchenPin: newKitchenPin,
+      waiterPin: newWaiterPin,
     });
 
     setIsCreateModalOpen(false);
@@ -251,13 +303,41 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
               </div>
             </div>
 
+            {/* Passwords & Staff PINs Manager Button */}
+            {onOpenAuthModal && (
+              <button
+                onClick={onOpenAuthModal}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 text-xs font-bold border border-sky-200 transition-all shrink-0"
+                title="Configure Passwords and Staff PINs"
+              >
+                <Key className="w-3.5 h-3.5 text-[#008BB8]" />
+                <span className="hidden sm:inline">Passwords & PINs</span>
+              </button>
+            )}
+
+            {/* Clear Demo Orders Action */}
+            {onClearDemoOrders && (
+              <button
+                onClick={() => {
+                  if (confirm('Clear all demo mock orders and start fresh with 0 orders?')) {
+                    onClearDemoOrders();
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold border border-amber-200 transition-all shrink-0"
+                title="Wipe mock orders for a clean production start"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-amber-600" />
+                <span className="hidden sm:inline">Clear Demo Orders</span>
+              </button>
+            )}
+
             {/* Provision Restaurant Button */}
             <button
               onClick={() => setIsCreateModalOpen(true)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#00C8FF] hover:bg-[#00B2E3] text-[#0A192F] text-xs font-bold shadow-sm transition-transform active:scale-95 shrink-0"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Provision Restaurant</span>
+              <span>Add Real Restaurant</span>
             </button>
           </div>
         </div>
@@ -337,6 +417,88 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
           </button>
         </div>
       </header>
+
+      {/* NEW RESTAURANT PROVISIONED CREDENTIALS BANNER */}
+      {createdNotice && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 pt-6">
+          <div className="bg-gradient-to-r from-emerald-500 via-teal-600 to-[#008BB8] text-white rounded-2xl p-5 shadow-lg border border-emerald-400/40 relative overflow-hidden">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-300 animate-ping" />
+                  <span className="text-xs font-black uppercase tracking-wider bg-black/20 px-2 py-0.5 rounded-md text-emerald-200">
+                    Live Restaurant Ready
+                  </span>
+                  <h3 className="text-lg font-black">{createdNotice.name} Successfully Added!</h3>
+                </div>
+                <p className="text-xs text-emerald-100 max-w-2xl">
+                  Your new restaurant has been deployed with real-time sync. Use the dedicated credentials below to sign in or operate the kitchen & customer portals.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setCreatedNotice(null)}
+                className="self-end md:self-auto text-xs bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-xl font-bold transition-all"
+              >
+                Dismiss Notice
+              </button>
+            </div>
+
+            {/* Credentials Card Matrix */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4 pt-4 border-t border-white/20 text-xs">
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/15">
+                <span className="text-[10px] text-emerald-200 uppercase font-bold block mb-1">Restaurant Slug</span>
+                <span className="font-mono font-bold text-white text-xs block">{createdNotice.slug}</span>
+                <span className="text-[10px] text-white/70">https://{createdNotice.slug}.ceyteq.com</span>
+              </div>
+
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/15">
+                <span className="text-[10px] text-emerald-200 uppercase font-bold block mb-1">Owner Admin Login</span>
+                <span className="font-mono font-bold text-white text-xs block">{createdNotice.email}</span>
+                <span className="font-mono text-[11px] text-amber-200 font-black">Pass: {createdNotice.password}</span>
+              </div>
+
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/15">
+                <span className="text-[10px] text-emerald-200 uppercase font-bold block mb-1">Kitchen Display PIN</span>
+                <span className="font-mono font-black text-amber-300 text-base tracking-widest block">{createdNotice.kitchenPin}</span>
+                <span className="text-[10px] text-white/70">For Chef KOT Terminal</span>
+              </div>
+
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/15">
+                <span className="text-[10px] text-emerald-200 uppercase font-bold block mb-1">Waiter Staff PIN</span>
+                <span className="font-mono font-black text-sky-200 text-base tracking-widest block">{createdNotice.waiterPin}</span>
+                <span className="text-[10px] text-white/70">For Mobile Handheld</span>
+              </div>
+            </div>
+
+            {/* Action Buttons Row */}
+            <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-white/15">
+              <button
+                onClick={() => {
+                  const target = tenants.find(t => t.slug === createdNotice.slug);
+                  if (target) onSwitchToTenantDashboard(target.id);
+                }}
+                className="px-4 py-2 rounded-xl bg-white text-slate-900 text-xs font-black hover:bg-slate-100 transition-all shadow-sm"
+              >
+                Go to {createdNotice.name} Dashboard →
+              </button>
+
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    `Restaurant: ${createdNotice.name}\nSlug: ${createdNotice.slug}\nOwner: ${createdNotice.email}\nPassword: ${createdNotice.password}\nKitchen PIN: ${createdNotice.kitchenPin}\nWaiter PIN: ${createdNotice.waiterPin}`
+                  );
+                  alert('Credentials copied to clipboard!');
+                }}
+                className="px-3.5 py-2 rounded-xl bg-black/25 hover:bg-black/40 text-white text-xs font-bold transition-all flex items-center gap-1.5"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copy Credentials</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* KPI METRIC CARDS ROW */}
       <div className="max-w-7xl mx-auto px-4 sm:px-8 pt-6">
@@ -1000,11 +1162,11 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
       {/* MODAL 1: PROVISION NEW RESTAURANT CLIENT */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white border border-sky-100 rounded-3xl w-full max-w-lg p-6 shadow-2xl text-slate-800">
-            <div className="flex items-center justify-between mb-4">
+          <div className="bg-white border border-sky-100 rounded-3xl w-full max-w-xl p-6 shadow-2xl text-slate-800 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4 border-b border-sky-100 pb-3">
               <div>
-                <h2 className="text-base font-bold text-slate-900">Provision New Restaurant Tenant</h2>
-                <p className="text-xs text-slate-500">Instantly deploy a new client into the Ceyteq Digital Race ecosystem.</p>
+                <h2 className="text-base font-black text-slate-900">Provision Real Restaurant Tenant (අලුත් අවන්හලක්)</h2>
+                <p className="text-xs text-slate-500">Deploy a real restaurant with dedicated Owner credentials and Staff PINs.</p>
               </div>
               <button onClick={() => setIsCreateModalOpen(false)} className="text-slate-400 hover:text-slate-700">
                 <X className="w-5 h-5" />
@@ -1012,57 +1174,194 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
             </div>
 
             <form onSubmit={handleCreateSubmit} className="space-y-4">
-              <div>
-                <label className="text-xs font-medium text-slate-700 block mb-1">Restaurant Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Galle Fort Heritage Cafe"
-                  value={newName}
-                  onChange={(e) => handleNameChange(e.target.value)}
-                  className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#00C8FF] shadow-2xs"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-slate-700 block mb-1">Subdomain Slug</label>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-slate-400">https://</span>
-                  <input
-                    type="text"
-                    required
-                    placeholder="galle-fort"
-                    value={newSlug}
-                    onChange={(e) => setNewSlug(e.target.value)}
-                    className="flex-1 bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-[#00C8FF] shadow-2xs"
-                  />
-                  <span className="text-xs font-mono text-slate-500">.ceyteq.com</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+              {/* Section 1: Basic Identity */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-slate-700 block mb-1">Owner Contact Name</label>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Restaurant Name *</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Roshan Jayasuriya"
-                    value={newOwnerName}
-                    onChange={(e) => setNewOwnerName(e.target.value)}
-                    className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#00C8FF] shadow-2xs"
+                    placeholder="e.g. Galle Fort Heritage Cafe"
+                    value={newName}
+                    onChange={(e) => handleNameChange(e.target.value)}
+                    className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#00C8FF] shadow-2xs font-bold"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-medium text-slate-700 block mb-1">Owner Email</label>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Subdomain Slug *</label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      required
+                      placeholder="galle-fort"
+                      value={newSlug}
+                      onChange={(e) => setNewSlug(e.target.value)}
+                      className="flex-1 bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-[#00C8FF] shadow-2xs"
+                    />
+                    <span className="text-[11px] font-mono text-slate-500">.ceyteq.com</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 2: Owner Credentials */}
+              <div className="bg-sky-50/70 border border-sky-200/80 rounded-2xl p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-[#008BB8]" />
+                    <span>Owner Login Credentials (මුරපද)</span>
+                  </span>
+                  <span className="text-[10px] bg-[#008BB8] text-white px-2 py-0.5 rounded font-bold">
+                    Admin Access
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Owner Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Roshan Jayasuriya"
+                      value={newOwnerName}
+                      onChange={(e) => setNewOwnerName(e.target.value)}
+                      className="w-full bg-white border border-sky-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-[#00C8FF]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Owner Email *</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="owner@gallefort.lk"
+                      value={newOwnerEmail}
+                      onChange={(e) => setNewOwnerEmail(e.target.value)}
+                      className="w-full bg-white border border-sky-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 font-mono focus:outline-none focus:border-[#00C8FF]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Admin Password *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newOwnerPassword}
+                      onChange={(e) => setNewOwnerPassword(e.target.value)}
+                      className="w-full bg-white border border-sky-300 rounded-xl px-2.5 py-1.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00C8FF]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 3: Staff Terminal PINs */}
+              <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-amber-950 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Staff Terminal PINs (Kitchen & Waiter)</span>
+                  </span>
+                  <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded font-bold">
+                    Quick Access
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-amber-900 block mb-1">Kitchen Display (KOT) PIN</label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={newKitchenPin}
+                      onChange={(e) => setNewKitchenPin(e.target.value)}
+                      placeholder="2026"
+                      className="w-full bg-white border border-amber-300 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-center tracking-widest text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-amber-900 block mb-1">Waitstaff Mobile PIN</label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={newWaiterPin}
+                      onChange={(e) => setNewWaiterPin(e.target.value)}
+                      placeholder="1122"
+                      className="w-full bg-white border border-amber-300 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-center tracking-widest text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 4: Operational Settings */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="col-span-2">
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Contact Phone</label>
                   <input
-                    type="email"
-                    required
-                    placeholder="owner@gallefort.lk"
-                    value={newOwnerEmail}
-                    onChange={(e) => setNewOwnerEmail(e.target.value)}
-                    className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#00C8FF] shadow-2xs"
+                    type="text"
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    placeholder="+94 77 123 4567"
+                    className="w-full bg-white border border-sky-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-900"
                   />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Table Count</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={newTableCount}
+                    onChange={(e) => setNewTableCount(Number(e.target.value))}
+                    className="w-full bg-white border border-sky-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 font-mono text-center font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Currency</label>
+                  <select
+                    value={newCurrency}
+                    onChange={(e) => setNewCurrency(e.target.value as any)}
+                    className="w-full bg-white border border-sky-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 font-bold"
+                  >
+                    <option value="LKR">LKR (Rs)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="AED">AED</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Section 5: Menu Initialization */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Initial Dish Catalog</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewStarterMenu('STARTER')}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      newStarterMenu === 'STARTER'
+                        ? 'bg-sky-50 text-sky-900 border-[#00C8FF] shadow-xs'
+                        : 'bg-white text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    <div className="text-xs font-bold">Sri Lankan Starter Menu</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Sample Rice & Curry, Kottu, Drinks</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewStarterMenu('BLANK')}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      newStarterMenu === 'BLANK'
+                        ? 'bg-emerald-50 text-emerald-900 border-emerald-400 shadow-xs'
+                        : 'bg-white text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    <div className="text-xs font-bold">Clean Blank Catalog (0 Dishes)</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Start fresh and add your own real dishes</div>
+                  </button>
                 </div>
               </div>
 
@@ -1164,9 +1463,9 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-[#00C8FF] hover:bg-[#00B2E3] text-[#0A192F] text-xs font-bold shadow-sm"
+                  className="px-5 py-2 rounded-xl bg-[#00C8FF] hover:bg-[#00B2E3] text-[#0A192F] text-xs font-black shadow-md transition-all cursor-pointer"
                 >
-                  Provision Tenant
+                  Provision & Deploy Restaurant →
                 </button>
               </div>
             </form>

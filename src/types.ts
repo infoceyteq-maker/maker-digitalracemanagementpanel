@@ -125,6 +125,9 @@ export interface Tenant {
   address: string;
   wifiSsid?: string;
   wifiPassword?: string;
+  ownerPassword?: string;
+  kitchenPin?: string;
+  waiterPin?: string;
   currency: 'LKR' | 'USD' | 'EUR' | 'AED';
   tableCount: number;
   totalViews: number;

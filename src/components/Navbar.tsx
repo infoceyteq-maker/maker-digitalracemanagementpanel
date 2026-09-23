@@ -18,7 +18,8 @@ import {
   X,
   Layers,
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  Radio
 } from 'lucide-react';
 import { ActiveView, Tenant, WaiterRequest, AuthUser } from '../types';
 import { CeyteqLogo } from './CeyteqLogo';
@@ -34,6 +35,7 @@ interface NavbarProps {
   setTableNumber: (table: number) => void;
   currentUser?: AuthUser | null;
   onOpenAuthModal?: () => void;
+  onOpenPortalLauncher?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -47,6 +49,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   setTableNumber,
   currentUser,
   onOpenAuthModal,
+  onOpenPortalLauncher,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const currentTenant = tenants.find(t => t.id === currentTenantId) || tenants[0];
@@ -220,6 +223,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                   ))}
                 </select>
               </div>
+            )}
+
+            {/* Realtime Portals & Separate Devices Button */}
+            {onOpenPortalLauncher && (
+              <button
+                onClick={onOpenPortalLauncher}
+                className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-2.5 py-1.5 rounded-xl font-bold text-xs shadow-xs hover:shadow-md transition-all hover:brightness-105 shrink-0"
+                title="Open separate screens for Customer Phone, Kitchen KOT, and Master Admin"
+              >
+                <Radio className="w-3.5 h-3.5 animate-pulse text-white" />
+                <span className="hidden md:inline">Separate Devices</span>
+                <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded font-mono">Real-Time</span>
+              </button>
             )}
 
             {/* Security Profile / 2FA Status */}
