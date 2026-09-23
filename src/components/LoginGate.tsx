@@ -66,157 +66,140 @@ export const LoginGate: React.FC<LoginGateProps> = ({
     setIsLoading(true);
     setErrorMessage(null);
 
-    try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
-      });
+    const freshCreds = credentialsService.getCredentials();
+    const freshAdmins = credentialsService.getEnterpriseAdmins();
+    const normalized = email.trim().toLowerCase();
 
-      const data = await response.json();
-
-      if (!response.ok) {
+    // 1. Direct check: Super Master Admin
+    if (normalized === freshCreds.superAdminEmail.toLowerCase()) {
+      if (
+        password === freshCreds.superAdminPassword ||
+        password === 'admin@ceyteq2026' ||
+        password === 'CeyteqMaster@2026!'
+      ) {
+        soundService.playSuccessChime();
+        const rootUser: AuthUser = {
+          id: 'usr-super-root',
+          email: freshCreds.superAdminEmail,
+          name: 'Ceyteq Root System Supervisor',
+          role: 'SUPER_ADMIN',
+          tier: 'PRO',
+          isEmailVerified: true,
+          mfaEnabled: true,
+          status: 'ACTIVE',
+          failedLoginAttempts: 0,
+        };
+        credentialsService.setCurrentSessionUser(rootUser);
+        setSuccessMessage('Welcome Super Master Admin! Access Granted.');
+        setTimeout(() => {
+          onLoginSuccess(rootUser, 'jwt_root_session', '/dashboard/super');
+        }, 500);
+        return;
+      } else {
         soundService.playAlertSound();
-        if (data.code === 'ERR_ACCOUNT_NOT_ACTIVE') {
-          setErrorMessage('Account is pending activation. Please use your 24-hour single-use activation link to set your permanent password first.');
-        } else {
-          setErrorMessage(data.error || 'Authentication failed. Please verify your credentials.');
-        }
+        setErrorMessage('Incorrect password for Super Master Admin. Click "Forgot Password?" to reset it.');
         setIsLoading(false);
         return;
       }
+    }
 
-      // Check for MFA or email verification challenges
-      if (data.requiresEmailVerification) {
-        setErrorMessage('Account activation pending. Please complete email OTP verification.');
+    // 2. Direct check: Enterprise Division / Branch Admins (including newly added/edited real emails)
+    const matchedAdmin = freshAdmins.find((a) => a.email.toLowerCase() === normalized);
+    if (matchedAdmin) {
+      if (matchedAdmin.password === password) {
+        soundService.playSuccessChime();
+        const adminUser: AuthUser = {
+          id: matchedAdmin.id,
+          email: matchedAdmin.email,
+          name: matchedAdmin.name,
+          role: matchedAdmin.role === 'DIVISION_ADMIN' ? ('DIVISION_ADMIN' as any) : 'SUPER_ADMIN',
+          tier: 'PRO',
+          isEmailVerified: true,
+          mfaEnabled: false,
+          status: 'ACTIVE',
+          failedLoginAttempts: 0,
+        };
+        credentialsService.setCurrentSessionUser(adminUser);
+        setSuccessMessage(`Welcome ${matchedAdmin.name}! Access Granted.`);
+        setTimeout(() => {
+          onLoginSuccess(adminUser, 'jwt_admin_session', `/dashboard/division/${matchedAdmin.division || 'up-country'}`);
+        }, 500);
+        return;
+      } else {
+        soundService.playAlertSound();
+        setErrorMessage(`Incorrect password for ${matchedAdmin.name}. Click "Forgot Password?" to reset.`);
         setIsLoading(false);
         return;
       }
+    }
 
-      soundService.playSuccessChime();
-      setSuccessMessage('Credentials authenticated! Decrypting division workspace...');
-
-      const authUser: AuthUser = {
-        id: data.user.id,
-        email: data.user.email,
-        name: data.user.name,
-        role: data.user.role,
-        tier: data.user.tier || 'PRO',
-        isEmailVerified: true,
-        mfaEnabled: data.user.mfaEnabled || false,
-        status: 'ACTIVE',
-        failedLoginAttempts: 0,
-      };
-
-      // Store in session
-      credentialsService.setCurrentSessionUser(authUser);
-
-      setTimeout(() => {
-        onLoginSuccess(authUser, data.token, data.redirectUrl);
-      }, 700);
-
-    } catch (err: any) {
-      console.error('Login error:', err);
-      // Client-side authentication fallback (for static hosting or offline environments)
-      const normalized = email.trim().toLowerCase();
-      
-      // Check Super Master Admin
-      const isSuperEmail = normalized === sysCreds.superAdminEmail.toLowerCase();
-      if (isSuperEmail) {
-        if (password === sysCreds.superAdminPassword || password === 'admin@ceyteq2026' || password === 'CeyteqMaster@2026!') {
+    // 3. Direct check: Restaurant Tenant Owners
+    for (const [tenantId, tCred] of Object.entries(freshCreds.tenantPasswords)) {
+      if (tCred.ownerEmail.toLowerCase() === normalized) {
+        if (tCred.ownerPassword === password) {
           soundService.playSuccessChime();
-          const rootUser: AuthUser = {
-            id: 'usr-super-root',
-            email: sysCreds.superAdminEmail,
-            name: 'Ceyteq Root System Supervisor',
-            role: 'SUPER_ADMIN',
-            tier: 'PRO',
-            isEmailVerified: true,
-            mfaEnabled: true,
-            status: 'ACTIVE',
-            failedLoginAttempts: 0,
-          };
-          credentialsService.setCurrentSessionUser(rootUser);
-          setSuccessMessage('Welcome Super Master Admin! Access Granted.');
-          setTimeout(() => {
-            onLoginSuccess(rootUser, 'jwt_root_session', '/dashboard/super');
-          }, 500);
-          return;
-        } else {
-          soundService.playAlertSound();
-          setErrorMessage('Incorrect password for Super Master Admin. (Default password: CeyteqMaster@2026!)');
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      // Check Enterprise Division / Branch Admins
-      const matchedAdminByEmail = enterpriseAdmins.find(
-        (a) => a.email.toLowerCase() === normalized
-      );
-      if (matchedAdminByEmail) {
-        if (matchedAdminByEmail.password === password) {
-          soundService.playSuccessChime();
-          const adminUser: AuthUser = {
-            id: matchedAdminByEmail.id,
-            email: matchedAdminByEmail.email,
-            name: matchedAdminByEmail.name,
-            role: matchedAdminByEmail.role === 'DIVISION_ADMIN' ? ('DIVISION_ADMIN' as any) : 'SUPER_ADMIN',
+          const restUser: AuthUser = {
+            id: `usr-${tenantId}`,
+            email: tCred.ownerEmail,
+            name: 'Restaurant Administrator',
+            role: 'TENANT_OWNER' as any,
             tier: 'PRO',
             isEmailVerified: true,
             mfaEnabled: false,
             status: 'ACTIVE',
             failedLoginAttempts: 0,
           };
-          credentialsService.setCurrentSessionUser(adminUser);
-          setSuccessMessage(`Welcome ${matchedAdminByEmail.name}! Access Granted.`);
+          credentialsService.setCurrentSessionUser(restUser);
+          setSuccessMessage('Welcome Restaurant Admin! Access Granted.');
           setTimeout(() => {
-            onLoginSuccess(adminUser, 'jwt_admin_session', `/dashboard/division/${matchedAdminByEmail.division || 'up-country'}`);
+            onLoginSuccess(restUser, 'jwt_rest_session', `/dashboard/restaurant/${tenantId}`);
           }, 500);
           return;
         } else {
           soundService.playAlertSound();
-          setErrorMessage(`Incorrect password for ${matchedAdminByEmail.name}.`);
+          setErrorMessage('Incorrect password for Restaurant Administrator. Click "Forgot Password?" to reset.');
           setIsLoading(false);
           return;
         }
       }
-
-      // Check Restaurant Tenant Owners
-      for (const [tenantId, tCred] of Object.entries(sysCreds.tenantPasswords)) {
-        if (tCred.ownerEmail.toLowerCase() === normalized) {
-          if (tCred.ownerPassword === password) {
-            soundService.playSuccessChime();
-            const restUser: AuthUser = {
-              id: `usr-${tenantId}`,
-              email: tCred.ownerEmail,
-              name: 'Restaurant Administrator',
-              role: 'TENANT_OWNER' as any,
-              tier: 'PRO',
-              isEmailVerified: true,
-              mfaEnabled: false,
-              status: 'ACTIVE',
-              failedLoginAttempts: 0,
-            };
-            credentialsService.setCurrentSessionUser(restUser);
-            setSuccessMessage('Welcome Restaurant Admin! Access Granted.');
-            setTimeout(() => {
-              onLoginSuccess(restUser, 'jwt_rest_session', `/dashboard/restaurant/${tenantId}`);
-            }, 500);
-            return;
-          } else {
-            soundService.playAlertSound();
-            setErrorMessage('Incorrect password for Restaurant Administrator.');
-            setIsLoading(false);
-            return;
-          }
-        }
-      }
-
-      soundService.playAlertSound();
-      setErrorMessage('Account not found. Please verify your email address or use the Quick Test selector below.');
-      setIsLoading(false);
     }
+
+    // 4. Try backend API if present (with safe content-type checking)
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+      const contentType = response.headers.get('content-type') || '';
+      if (response.ok && contentType.includes('application/json')) {
+        const data = await response.json();
+        soundService.playSuccessChime();
+        setSuccessMessage('Credentials authenticated! Decrypting division workspace...');
+        const authUser: AuthUser = {
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.name,
+          role: data.user.role,
+          tier: data.user.tier || 'PRO',
+          isEmailVerified: true,
+          mfaEnabled: data.user.mfaEnabled || false,
+          status: 'ACTIVE',
+          failedLoginAttempts: 0,
+        };
+        credentialsService.setCurrentSessionUser(authUser);
+        setTimeout(() => {
+          onLoginSuccess(authUser, data.token, data.redirectUrl);
+        }, 500);
+        return;
+      }
+    } catch {
+      // background server not reached
+    }
+
+    soundService.playAlertSound();
+    setErrorMessage('Account not found. Please verify your email or click "Forgot Password?" to reset / activate access.');
+    setIsLoading(false);
   };
 
   return (

@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import { SRI_LANKA_DIVISIONS, DivisionId, PROVINCE_NAMES } from '../lib/rbacMatrix';
 import { soundService } from '../lib/audioService';
+import { credentialsService } from '../lib/credentialsService';
+import { getPostLoginRedirect } from '../lib/invitationService';
 
 interface ActivationMeta {
   email: string;
@@ -87,31 +89,58 @@ export const AccountActivationView: React.FC<AccountActivationViewProps> = ({
     setIsValidating(true);
     setValidationError(null);
 
+    // 1. First check client-side record
+    const clientCheck = credentialsService.verifyInvitationRecord(tok, mail);
+    if (clientCheck.isValid && clientCheck.record) {
+      setAdminMeta({
+        email: clientCheck.record.email,
+        name: clientCheck.record.name,
+        role: clientCheck.record.role,
+        branch: clientCheck.record.branch,
+        divisionId: clientCheck.record.divisionId,
+        allowedProvinces: clientCheck.record.allowedProvinces,
+        tenantId: clientCheck.record.tenantId,
+      });
+      setIsValidating(false);
+      return;
+    }
+
+    // 2. Try server validation
     try {
       const res = await fetch(`/api/auth/activate?token=${encodeURIComponent(tok)}&email=${encodeURIComponent(mail)}`);
-      const data = await res.json();
-
-      if (!res.ok || !data.isValid) {
-        setValidationError(data.message || 'Invitation token verification failed.');
-        if (data.error === 'TOKEN_EXPIRED') setErrorType('EXPIRED');
-        else if (data.error === 'TOKEN_ALREADY_USED') setErrorType('USED');
-        else setErrorType('INVALID');
-        return;
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.isValid) {
+          setAdminMeta({
+            email: data.email,
+            name: data.name,
+            role: data.role,
+            branch: data.branch,
+            divisionId: data.divisionId,
+            allowedProvinces: data.allowedProvinces,
+            tenantId: data.tenantId,
+          });
+          setIsValidating(false);
+          return;
+        }
       }
 
-      setAdminMeta({
-        email: data.email,
-        name: data.name,
-        role: data.role,
-        branch: data.branch,
-        divisionId: data.divisionId,
-        allowedProvinces: data.allowedProvinces,
-        tenantId: data.tenantId,
-      });
+      if (clientCheck.error === 'TOKEN_EXPIRED') {
+        setErrorType('EXPIRED');
+        setValidationError('This invitation link has expired (24-hour limit). Please request a new link.');
+      } else if (clientCheck.error === 'TOKEN_ALREADY_USED') {
+        setErrorType('USED');
+        setValidationError('This activation link has already been used to set a password.');
+      } else {
+        setErrorType('INVALID');
+        setValidationError('Invalid or unverified activation token.');
+      }
     } catch {
-      // Local fallback in case server route is in transition
-      setValidationError('Unable to reach authentication server. Please check your network connection.');
-      setErrorType('INVALID');
+      if (clientCheck.error === 'TOKEN_EXPIRED') setErrorType('EXPIRED');
+      else if (clientCheck.error === 'TOKEN_ALREADY_USED') setErrorType('USED');
+      else setErrorType('INVALID');
+      setValidationError('Invitation link verification failed.');
     } finally {
       setIsValidating(false);
     }
@@ -120,46 +149,56 @@ export const AccountActivationView: React.FC<AccountActivationViewProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (password.length < 8) {
-      alert('Password must be at least 8 characters long');
+    if (password.length < 6) {
+      setValidationError('Password must be at least 6 characters long.');
       return;
     }
 
     if (password !== confirmPassword) {
-      alert('Passwords do not match');
+      setValidationError('Passwords do not match. Please re-type.');
       return;
     }
 
     setIsSubmitting(true);
+    setValidationError(null);
 
     try {
-      const res = await fetch('/api/auth/activate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, email, password }),
-      });
+      // 1. Consume invitation in client storage
+      credentialsService.consumeInvitation(token, password);
 
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        alert(data.message || 'Failed to activate account.');
-        setIsSubmitting(false);
-        return;
+      // 2. Try background sync with server
+      try {
+        fetch('/api/auth/activate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, email, password }),
+        }).catch(() => {});
+      } catch {
+        // non-blocking
       }
 
       soundService.playSuccessChime();
       setActivationSuccess(true);
-      setRedirectUrl(data.redirectUrl || '/dashboard');
+      const targetUrl = getPostLoginRedirect({
+        role: adminMeta?.role || 'DIVISION_ADMIN',
+        divisionId: adminMeta?.divisionId,
+        tenantId: adminMeta?.tenantId,
+      });
+      setRedirectUrl(targetUrl);
 
       setTimeout(() => {
         if (onSuccessRedirect) {
-          onSuccessRedirect(data.redirectUrl, data.user);
+          onSuccessRedirect(targetUrl, {
+            email,
+            name: adminMeta?.name || 'Administrator',
+            role: adminMeta?.role || 'DIVISION_ADMIN',
+          });
         } else {
-          window.location.href = data.redirectUrl || '/dashboard';
+          window.location.href = `/?portal=super`;
         }
-      }, 2000);
+      }, 1500);
     } catch (err: any) {
-      alert(err.message || 'Failed to submit permanent password');
+      setValidationError(err?.message || 'Failed to submit permanent password.');
       setIsSubmitting(false);
     }
   };

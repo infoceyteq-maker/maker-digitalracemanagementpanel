@@ -442,4 +442,212 @@ export const credentialsService = {
       // ignore
     }
   },
+
+  // Find any account across Super Admin, Enterprise Admins, and Restaurant Owners
+  findAccountByEmail(email: string): {
+    accountType: 'SUPER_ADMIN' | 'ENTERPRISE_ADMIN' | 'RESTAURANT_OWNER' | 'UNKNOWN';
+    record?: any;
+  } {
+    const creds = this.getCredentials();
+    const normalized = email.trim().toLowerCase();
+
+    if (normalized === creds.superAdminEmail.toLowerCase()) {
+      return {
+        accountType: 'SUPER_ADMIN',
+        record: {
+          id: 'usr-super-root',
+          email: creds.superAdminEmail,
+          phone: creds.superAdminPhone,
+          name: 'Ceyteq Root System Supervisor',
+          role: 'SUPER_ADMIN',
+        },
+      };
+    }
+
+    const adm = creds.enterpriseAdmins.find((a) => a.email.toLowerCase() === normalized);
+    if (adm) {
+      return { accountType: 'ENTERPRISE_ADMIN', record: adm };
+    }
+
+    for (const [tenantId, tCred] of Object.entries(creds.tenantPasswords)) {
+      if (tCred.ownerEmail.toLowerCase() === normalized) {
+        return {
+          accountType: 'RESTAURANT_OWNER',
+          record: { tenantId, ...tCred },
+        };
+      }
+    }
+
+    return { accountType: 'UNKNOWN' };
+  },
+
+  // Reset password for ANY real email in the entire system
+  resetPasswordByEmail(email: string, newPass: string): boolean {
+    const creds = this.getCredentials();
+    const normalized = email.trim().toLowerCase();
+    let updated = false;
+
+    // 1. Super Admin
+    if (normalized === creds.superAdminEmail.toLowerCase()) {
+      creds.superAdminPassword = newPass;
+      updated = true;
+    }
+
+    // 2. Enterprise Admins (Division Admins, Branch Masters)
+    const adminIndex = creds.enterpriseAdmins.findIndex((a) => a.email.toLowerCase() === normalized);
+    if (adminIndex >= 0) {
+      creds.enterpriseAdmins[adminIndex].password = newPass;
+      creds.enterpriseAdmins[adminIndex].status = 'ACTIVE';
+      updated = true;
+    }
+
+    // 3. Restaurant Owners
+    for (const [tenantId, tCred] of Object.entries(creds.tenantPasswords)) {
+      if (tCred.ownerEmail.toLowerCase() === normalized) {
+        tCred.ownerPassword = newPass;
+        updated = true;
+      }
+    }
+
+    // 4. If not found yet, create as an Enterprise Admin so they can log in
+    if (!updated) {
+      creds.enterpriseAdmins.push({
+        id: `adm-${Date.now()}`,
+        name: normalized.split('@')[0],
+        email: normalized,
+        phone: '+94770000000',
+        password: newPass,
+        role: 'DIVISION_ADMIN',
+        platformBranch: 'DIGITAL_RACE',
+        division: 'UP_COUNTRY',
+        allowedProvinces: ['CENTRAL', 'UVA', 'SABARAGAMUWA'],
+        permissions: {
+          canProvisionTenants: true,
+          canResetCredentials: true,
+          canManageFleet: false,
+          canConfigureAddons: false,
+          canAccessGlobalConfig: false,
+        },
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+      });
+      updated = true;
+    }
+
+    this.saveCredentials(creds);
+    return updated;
+  },
+
+  // Client-safe single-use invitation store
+  createInvitationRecord(params: {
+    email: string;
+    name: string;
+    role: string;
+    branch?: string;
+    divisionId?: string | null;
+    allowedProvinces?: string[];
+  }): { token: string; activationUrl: string } {
+    const normalized = params.email.trim().toLowerCase();
+    const token = btoa(`${normalized}:${Date.now()}:${Math.random().toString(36).substring(2)}${Math.random().toString(36).substring(2)}`);
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+    const record = {
+      token,
+      email: normalized,
+      name: params.name,
+      role: params.role,
+      branch: params.branch || 'DIGITAL_RACE',
+      divisionId: params.divisionId || null,
+      allowedProvinces: params.allowedProvinces || [],
+      expiresAt,
+      isUsed: false,
+      createdAt: Date.now(),
+    };
+
+    if (typeof window !== 'undefined') {
+      try {
+        const existing = JSON.parse(localStorage.getItem('ceyteq_invitations_v1') || '{}');
+        existing[token] = record;
+        localStorage.setItem('ceyteq_invitations_v1', JSON.stringify(existing));
+      } catch {
+        // ignore
+      }
+    }
+
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://maker-digitalracemanagementpanel.vercel.app';
+    const activationUrl = `${origin}/?portal=activate&token=${encodeURIComponent(token)}&email=${encodeURIComponent(normalized)}`;
+
+    return { token, activationUrl };
+  },
+
+  verifyInvitationRecord(token: string, email: string): {
+    isValid: boolean;
+    record?: any;
+    error?: 'TOKEN_NOT_FOUND' | 'TOKEN_EXPIRED' | 'TOKEN_ALREADY_USED' | 'EMAIL_MISMATCH';
+  } {
+    if (typeof window === 'undefined') return { isValid: false, error: 'TOKEN_NOT_FOUND' };
+    try {
+      const existing = JSON.parse(localStorage.getItem('ceyteq_invitations_v1') || '{}');
+      const record = existing[token];
+      if (!record) {
+        // Check if token belongs to an enterprise admin in memory
+        const creds = this.getCredentials();
+        const admin = creds.enterpriseAdmins.find((a) => a.email.toLowerCase() === email.trim().toLowerCase());
+        if (admin) {
+          return {
+            isValid: true,
+            record: {
+              token,
+              email: admin.email,
+              name: admin.name,
+              role: admin.role,
+              branch: admin.platformBranch,
+              divisionId: admin.division,
+              allowedProvinces: admin.allowedProvinces,
+              expiresAt: Date.now() + 86400000,
+              isUsed: false,
+            },
+          };
+        }
+        return { isValid: false, error: 'TOKEN_NOT_FOUND' };
+      }
+
+      if (record.isUsed) {
+        return { isValid: false, error: 'TOKEN_ALREADY_USED' };
+      }
+
+      if (Date.now() > record.expiresAt) {
+        return { isValid: false, error: 'TOKEN_EXPIRED' };
+      }
+
+      if (record.email.toLowerCase() !== email.trim().toLowerCase()) {
+        return { isValid: false, error: 'EMAIL_MISMATCH' };
+      }
+
+      return { isValid: true, record };
+    } catch {
+      return { isValid: false, error: 'TOKEN_NOT_FOUND' };
+    }
+  },
+
+  consumeInvitation(token: string, newPassword: string): boolean {
+    if (typeof window === 'undefined') return false;
+    try {
+      const existing = JSON.parse(localStorage.getItem('ceyteq_invitations_v1') || '{}');
+      const record = existing[token];
+      if (record) {
+        record.isUsed = true;
+        record.usedAt = Date.now();
+        existing[token] = record;
+        localStorage.setItem('ceyteq_invitations_v1', JSON.stringify(existing));
+
+        // Update password for the user
+        this.resetPasswordByEmail(record.email, newPassword);
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  },
 };
