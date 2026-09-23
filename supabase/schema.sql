@@ -1,13 +1,9 @@
 -- ==============================================================================
--- CEYTEQ DIGITAL RACE - SUPABASE POSTGRESQL PRODUCTION DATABASE SCHEMA
+-- CEYTEQ ENTERPRISE ECOSYSTEM - SUPABASE POSTGRESQL PRODUCTION DATABASE SCHEMA
+-- Platforms:
+--   1. Digital Race: Restaurant Management System & Digital Menu
+--   2. TasteTrip: Food Delivery and Order Management Application
 -- Target Database: PostgreSQL 15+ (Supabase Cloud)
--- Connection Architecture:
---   1. Transaction Pooler (PgBouncer - Port 6543): 
---      DATABASE_URL="postgresql://postgres.[REF]:[PWD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?sslmode=require&pgbouncer=true&connection_limit=1"
---      Used for all Serverless Next.js App Router queries & Edge functions.
---   2. Direct Connection (Port 5432):
---      DIRECT_URL="postgresql://postgres.[REF]:[PWD]@aws-0-[REGION].pooler.supabase.com:5432/postgres?sslmode=require"
---      Used strictly for Schema Migrations, DDL & Idempotent Seeding.
 -- ==============================================================================
 
 -- 1. EXTENSIONS
@@ -17,10 +13,47 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- 2. ENUM TYPES
 DO $$ BEGIN
   CREATE TYPE user_role AS ENUM (
-    'MASTER_ADMIN',
+    'SUPER_MASTER_ADMIN',
+    'DIGITAL_RACE_MASTER',
+    'TASTETRIP_MASTER',
+    'DIVISION_ADMIN',
     'RESTAURANT_ADMIN',
     'KITCHEN_STAFF',
-    'WAITER_STAFF'
+    'WAITER_STAFF',
+    'DELIVERY_PARTNER'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE platform_branch AS ENUM (
+    'DIGITAL_RACE',
+    'TASTETRIP'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE division AS ENUM (
+    'UP_COUNTRY',
+    'SOUTH',
+    'WESTERN',
+    'NORTH'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE province AS ENUM (
+    'CENTRAL',
+    'UVA',
+    'SABARAGAMUWA',
+    'SOUTHERN',
+    'EASTERN',
+    'WESTERN',
+    'NORTH_WESTERN',
+    'NORTHERN',
+    'NORTH_CENTRAL'
   );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
@@ -45,25 +78,17 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-  CREATE TYPE otp_channel AS ENUM (
-    'EMAIL',
-    'WHATSAPP',
-    'DUAL'
-  );
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-DO $$ BEGIN
   CREATE TYPE otp_purpose AS ENUM (
     'PASSWORD_RESET',
     'ACCOUNT_VERIFICATION',
     'MFA_LOGIN',
-    'PRIVILEGED_ACTION'
+    'PRIVILEGED_ACTION',
+    'DIVISION_RESET'
   );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
--- 3. RESTAURANTS (TENANTS) TABLE
+-- 3. RESTAURANTS / STORES (TENANTS TABLE)
 CREATE TABLE IF NOT EXISTS public.restaurants (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(255) NOT NULL,
@@ -74,6 +99,13 @@ CREATE TABLE IF NOT EXISTS public.restaurants (
   dns_status VARCHAR(50) DEFAULT 'NOT_CONFIGURED',
   dns_expected_cname VARCHAR(255) DEFAULT 'cname.ceyteq.com',
   
+  -- Geographic Partitioning & Platform Branch
+  platform_branch platform_branch NOT NULL DEFAULT 'DIGITAL_RACE',
+  division division NOT NULL DEFAULT 'WESTERN',
+  province province NOT NULL DEFAULT 'WESTERN',
+  city VARCHAR(100) NOT NULL DEFAULT 'Colombo',
+  address TEXT NOT NULL,
+
   -- Owner contact
   owner_name VARCHAR(255) NOT NULL,
   owner_email VARCHAR(255) NOT NULL,
@@ -84,14 +116,13 @@ CREATE TABLE IF NOT EXISTS public.restaurants (
   status tenant_status NOT NULL DEFAULT 'ACTIVE',
   monthly_fee NUMERIC(10, 2) NOT NULL DEFAULT 129.00,
   
-  -- Add-On Flags (Explicit Master Admin Toggles)
+  -- Add-On Flags
   has_ai_chatbot BOOLEAN NOT NULL DEFAULT TRUE,
   has_whatsapp_bot BOOLEAN NOT NULL DEFAULT FALSE,
   whatsapp_phone_number_id VARCHAR(100),
   whatsapp_webhook_verify_token VARCHAR(255),
   
   -- Operational Details
-  address TEXT NOT NULL,
   currency VARCHAR(10) NOT NULL DEFAULT 'LKR',
   table_count INT NOT NULL DEFAULT 15,
   accent_color VARCHAR(50) DEFAULT '#00C8FF',
@@ -112,13 +143,13 @@ CREATE TABLE IF NOT EXISTS public.restaurants (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index for subdomain and slug routing
 CREATE INDEX IF NOT EXISTS idx_restaurants_slug ON public.restaurants(slug);
 CREATE INDEX IF NOT EXISTS idx_restaurants_subdomain ON public.restaurants(subdomain);
-CREATE INDEX IF NOT EXISTS idx_restaurants_custom_domain ON public.restaurants(custom_domain);
-CREATE INDEX IF NOT EXISTS idx_restaurants_owner_email ON public.restaurants(owner_email);
+CREATE INDEX IF NOT EXISTS idx_restaurants_platform_branch ON public.restaurants(platform_branch);
+CREATE INDEX IF NOT EXISTS idx_restaurants_division ON public.restaurants(division);
+CREATE INDEX IF NOT EXISTS idx_restaurants_province ON public.restaurants(province);
 
--- 4. USERS TABLE
+-- 4. USERS TABLE (ENTERPRISE RBAC)
 CREATE TABLE IF NOT EXISTS public.users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   restaurant_id UUID REFERENCES public.restaurants(id) ON DELETE CASCADE,
@@ -129,6 +160,8 @@ CREATE TABLE IF NOT EXISTS public.users (
   role user_role NOT NULL DEFAULT 'RESTAURANT_ADMIN',
   tier subscription_tier NOT NULL DEFAULT 'PRO',
   status tenant_status NOT NULL DEFAULT 'ACTIVE',
+  platform_branch platform_branch,
+
   is_email_verified BOOLEAN NOT NULL DEFAULT FALSE,
   is_phone_verified BOOLEAN NOT NULL DEFAULT FALSE,
   mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
@@ -137,21 +170,47 @@ CREATE TABLE IF NOT EXISTS public.users (
   locked_until TIMESTAMPTZ,
   last_login_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-  -- Constraint: Only MASTER_ADMIN can have NULL restaurant_id
-  CONSTRAINT check_master_or_restaurant CHECK (
-    (role = 'MASTER_ADMIN' AND restaurant_id IS NULL) OR
-    (role != 'MASTER_ADMIN' AND restaurant_id IS NOT NULL)
-  )
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON public.users(email);
 CREATE INDEX IF NOT EXISTS idx_users_phone ON public.users(phone);
-CREATE INDEX IF NOT EXISTS idx_users_restaurant_id ON public.users(restaurant_id);
 CREATE INDEX IF NOT EXISTS idx_users_role ON public.users(role);
+CREATE INDEX IF NOT EXISTS idx_users_restaurant_id ON public.users(restaurant_id);
 
--- 5. TENANT SUBSCRIPTIONS & INVOICES
+-- 5. DIVISION ASSIGNMENTS (GEOGRAPHIC PARTITIONING FOR LEVEL 3 ADMINS)
+CREATE TABLE IF NOT EXISTS public.division_assignments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL UNIQUE REFERENCES public.users(id) ON DELETE CASCADE,
+  platform_branch platform_branch NOT NULL,
+  division division NOT NULL,
+  allowed_provinces province[] NOT NULL,
+  assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_division_assignments_user ON public.division_assignments(user_id);
+CREATE INDEX IF NOT EXISTS idx_division_assignments_lookup ON public.division_assignments(platform_branch, division);
+
+-- 6. PERMISSIONS TABLE
+CREATE TABLE IF NOT EXISTS public.permissions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name VARCHAR(100) UNIQUE NOT NULL,
+  description TEXT NOT NULL,
+  role user_role NOT NULL,
+  can_provision_branch BOOLEAN NOT NULL DEFAULT FALSE,
+  can_provision_division BOOLEAN NOT NULL DEFAULT FALSE,
+  can_provision_tenant BOOLEAN NOT NULL DEFAULT FALSE,
+  can_reset_credentials BOOLEAN NOT NULL DEFAULT FALSE,
+  can_manage_fleet BOOLEAN NOT NULL DEFAULT FALSE,
+  can_configure_gateways BOOLEAN NOT NULL DEFAULT FALSE,
+  global_bypass BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_permissions_role ON public.permissions(role);
+
+-- 7. TENANT SUBSCRIPTIONS
 CREATE TABLE IF NOT EXISTS public.tenant_subscriptions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   restaurant_id UUID NOT NULL REFERENCES public.restaurants(id) ON DELETE CASCADE,
@@ -167,37 +226,25 @@ CREATE TABLE IF NOT EXISTS public.tenant_subscriptions (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_subscriptions_restaurant ON public.tenant_subscriptions(restaurant_id);
-
--- 6. DUAL-CHANNEL OTP VERIFICATIONS (Zero-Trust Password Reset & MFA)
+-- 8. DUAL-CHANNEL OTP VERIFICATIONS
 CREATE TABLE IF NOT EXISTS public.otp_verifications (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   purpose otp_purpose NOT NULL DEFAULT 'PASSWORD_RESET',
-  
-  -- Dual Token Hashes
   email_otp_hash TEXT NOT NULL,
   phone_otp_hash TEXT NOT NULL,
-  
-  -- Verification state
   email_verified BOOLEAN NOT NULL DEFAULT FALSE,
   phone_verified BOOLEAN NOT NULL DEFAULT FALSE,
   is_consumed BOOLEAN NOT NULL DEFAULT FALSE,
-  
-  -- Attempt throttling (Upstash Redis backup)
   failed_attempts INT NOT NULL DEFAULT 0,
   max_attempts INT NOT NULL DEFAULT 3,
   expires_at TIMESTAMPTZ NOT NULL,
   reset_token_hash TEXT,
-  
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   consumed_at TIMESTAMPTZ
 );
 
-CREATE INDEX IF NOT EXISTS idx_otp_user_id ON public.otp_verifications(user_id);
-CREATE INDEX IF NOT EXISTS idx_otp_expires_at ON public.otp_verifications(expires_at);
-
--- 7. AUDIT LOGS (Cybersecurity & Privileged Action Trail)
+-- 9. AUDIT LOGS
 CREATE TABLE IF NOT EXISTS public.audit_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   actor_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
@@ -212,32 +259,91 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_audit_actor_email ON public.audit_logs(actor_email);
-CREATE INDEX IF NOT EXISTS idx_audit_action ON public.audit_logs(action);
-CREATE INDEX IF NOT EXISTS idx_audit_created_at ON public.audit_logs(created_at);
-
--- 8. ROW LEVEL SECURITY (RLS) POLICIES
+-- ==============================================================================
+-- 10. POSTGRESQL ROW-LEVEL SECURITY (RLS) POLICIES
+-- ==============================================================================
 ALTER TABLE public.restaurants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.division_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.permissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tenant_subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.otp_verifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
--- Master Admin full access policy
-CREATE POLICY "master_admin_full_access_restaurants" ON public.restaurants
-  FOR ALL
-  TO authenticated
+-- POLICY 1: SUPER_MASTER_ADMIN (Level 1 Root System Supervisor)
+-- Absolute bypass across all tables
+CREATE POLICY "super_master_admin_all_restaurants" ON public.restaurants
+  FOR ALL TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM public.users
-      WHERE users.id = auth.uid() AND users.role = 'MASTER_ADMIN'
+      WHERE users.id = auth.uid() AND users.role = 'SUPER_MASTER_ADMIN'
     )
   );
 
--- Restaurant Admin isolated access
+CREATE POLICY "super_master_admin_all_users" ON public.users
+  FOR ALL TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.users AS u
+      WHERE u.id = auth.uid() AND u.role = 'SUPER_MASTER_ADMIN'
+    )
+  );
+
+CREATE POLICY "super_master_admin_all_assignments" ON public.division_assignments
+  FOR ALL TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.users
+      WHERE users.id = auth.uid() AND users.role = 'SUPER_MASTER_ADMIN'
+    )
+  );
+
+-- POLICY 2: BRANCH MASTER ADMINS (Level 2: DIGITAL_RACE_MASTER & TASTETRIP_MASTER)
+-- Full access to restaurants in their respective vertical only
+CREATE POLICY "branch_master_admin_restaurants" ON public.restaurants
+  FOR ALL TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.users
+      WHERE users.id = auth.uid() AND (
+        (users.role = 'DIGITAL_RACE_MASTER' AND restaurants.platform_branch = 'DIGITAL_RACE') OR
+        (users.role = 'TASTETRIP_MASTER' AND restaurants.platform_branch = 'TASTETRIP')
+      )
+    )
+  );
+
+-- POLICY 3: REGIONAL DIVISION ADMINS (Level 3: Geographic Province Partitioning)
+-- Division Admins can only view and manage restaurants within their assigned platform branch and provinces
+CREATE POLICY "division_admin_province_restaurants" ON public.restaurants
+  FOR ALL TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.division_assignments da
+      JOIN public.users u ON u.id = da.user_id
+      WHERE u.id = auth.uid() 
+        AND u.role = 'DIVISION_ADMIN'
+        AND da.platform_branch = restaurants.platform_branch
+        AND restaurants.province = ANY(da.allowed_provinces)
+    )
+  );
+
+-- Division Admins can view users of restaurants in their assigned provinces
+CREATE POLICY "division_admin_province_users" ON public.users
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.division_assignments da
+      JOIN public.restaurants r ON r.id = users.restaurant_id
+      WHERE da.user_id = auth.uid()
+        AND da.platform_branch = r.platform_branch
+        AND r.province = ANY(da.allowed_provinces)
+    )
+  );
+
+-- POLICY 4: RESTAURANT ADMINS & STORE STAFF (Level 4: Tenant Isolation)
 CREATE POLICY "restaurant_admin_isolated_restaurants" ON public.restaurants
-  FOR SELECT
-  TO authenticated
+  FOR SELECT TO authenticated
   USING (
     id IN (
       SELECT restaurant_id FROM public.users
@@ -245,13 +351,22 @@ CREATE POLICY "restaurant_admin_isolated_restaurants" ON public.restaurants
     )
   );
 
--- Public read for customer menu via slug/subdomain
+CREATE POLICY "restaurant_admin_isolated_users" ON public.users
+  FOR SELECT TO authenticated
+  USING (
+    restaurant_id IN (
+      SELECT restaurant_id FROM public.users
+      WHERE users.id = auth.uid()
+    )
+  );
+
+-- POLICY 5: PUBLIC ACCESS
+-- Anonymous guests can query active restaurant menus and digital storefronts
 CREATE POLICY "public_read_active_restaurants" ON public.restaurants
-  FOR SELECT
-  TO anon
+  FOR SELECT TO anon
   USING (status = 'ACTIVE');
 
--- 9. UPDATED_AT TRIGGER FUNCTION
+-- 11. AUTOMATIC UPDATED_AT TRIGGER
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -260,10 +375,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS tr_restaurants_updated_at ON public.restaurants;
 CREATE TRIGGER tr_restaurants_updated_at
   BEFORE UPDATE ON public.restaurants
   FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
+DROP TRIGGER IF EXISTS tr_users_updated_at ON public.users;
 CREATE TRIGGER tr_users_updated_at
   BEFORE UPDATE ON public.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();

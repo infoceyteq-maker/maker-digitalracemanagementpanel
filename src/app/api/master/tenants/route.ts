@@ -1,26 +1,41 @@
 /**
  * ==============================================================================
  * NEXT.JS API ROUTE: /api/master/tenants
- * Master Admin Exclusive Restaurant Provisioning & Subscription Management
+ * Enterprise Multi-Tier RBAC & Geographic Partitioning Tenant Provisioning
  * ==============================================================================
  */
 
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
+import {
+  EnterpriseActorSession,
+  EnterpriseUserRole,
+  SriLankanProvince,
+  PlatformBranch,
+  DivisionId,
+  canActorManageProvince,
+  PROVINCE_TO_DIVISION_MAP,
+  PROVINCE_NAMES,
+} from '@/lib/rbacMatrix';
+import { createTenantAction } from '@/actions/tenantActions';
 
 interface CreateTenantPayload {
   name: string;
   slug: string;
+  platformBranch?: PlatformBranch;
+  province?: SriLankanProvince;
+  city?: string;
+  division?: DivisionId;
   ownerName: string;
   ownerEmail: string;
   ownerPhone: string;
   ownerPassword?: string;
-  tier: 'FREE' | 'PLUS' | 'PRO';
-  hasAiChatbot: boolean;
-  hasWhatsAppBot: boolean;
+  tier?: 'FREE' | 'PLUS' | 'PRO';
+  hasAiChatbot?: boolean;
+  hasWhatsAppBot?: boolean;
   whatsappPhoneNumberId?: string;
   whatsappWebhookVerifyToken?: string;
-  address: string;
+  address?: string;
   currency?: 'LKR' | 'USD' | 'EUR' | 'AED';
   tableCount?: number;
   kitchenPin?: string;
@@ -30,127 +45,86 @@ interface CreateTenantPayload {
 
 export async function POST(request: Request) {
   try {
-    // 1. Verify Master Admin Authorization
-    const authHeader = request.headers.get('authorization');
-    const cookieToken = request.headers.get('cookie');
+    const roleHeader = (request.headers.get('x-client-role') || 'SUPER_MASTER_ADMIN') as EnterpriseUserRole;
+    const divisionHeader = request.headers.get('x-client-division') as DivisionId | undefined;
+    const branchHeader = (request.headers.get('x-client-branch') || 'DIGITAL_RACE') as PlatformBranch;
+    const emailHeader = request.headers.get('x-client-email') || 'info.ceyteq@gmail.com';
 
-    // In production, verify JWT payload has role: 'MASTER_ADMIN'
-    // Root Supervisor: Info.ceyteq@gmail.com
-    const isMasterAuthorized = true; // Guarded by /middleware.ts
+    // Normalize legacy role name
+    const effectiveRole: EnterpriseUserRole =
+      (roleHeader as any) === 'MASTER_ADMIN' ? 'SUPER_MASTER_ADMIN' : roleHeader;
 
-    if (!isMasterAuthorized) {
+    const actorSession: EnterpriseActorSession = {
+      userId: 'actor-session-id',
+      email: emailHeader,
+      name: 'System Actor',
+      role: effectiveRole,
+      platformBranch: branchHeader,
+      assignedDivision: divisionHeader,
+    };
+
+    const payload: CreateTenantPayload = await request.json();
+
+    const targetProvince: SriLankanProvince = payload.province || 'WESTERN';
+    const targetBranch: PlatformBranch = payload.platformBranch || 'DIGITAL_RACE';
+
+    // Geographic boundary check
+    const check = canActorManageProvince(actorSession, targetProvince, targetBranch);
+    if (!check.allowed) {
       return NextResponse.json(
         {
           error: 'FORBIDDEN',
-          message: 'Only the Master Admin (Info.ceyteq@gmail.com) has authorization to provision new restaurant tenants.',
+          code: 'ERR_GEOGRAPHIC_BOUNDARY_VIOLATION',
+          message: check.reason || 'Geographic partition violation.',
         },
         { status: 403 }
       );
     }
 
-    const payload: CreateTenantPayload = await request.json();
-    const {
-      name,
-      slug,
-      ownerName,
-      ownerEmail,
-      ownerPhone,
-      ownerPassword,
-      tier = 'PRO',
-      hasAiChatbot = true,
-      hasWhatsAppBot = false,
-      whatsappPhoneNumberId,
-      whatsappWebhookVerifyToken,
-      address,
-      currency = 'LKR',
-      tableCount = 15,
-      kitchenPin = '2026',
-      waiterPin = '1122',
-      customDomain,
-    } = payload;
+    // Call server action
+    const actionResult = await createTenantAction(actorSession, {
+      name: payload.name,
+      slug: payload.slug,
+      platformBranch: targetBranch,
+      province: targetProvince,
+      city: payload.city || 'Colombo',
+      address: payload.address || `${payload.city || 'Colombo'}, Sri Lanka`,
+      ownerName: payload.ownerName,
+      ownerEmail: payload.ownerEmail,
+      ownerPhone: payload.ownerPhone || '+94770000000',
+      tier: payload.tier || 'PRO',
+      hasAiChatbot: payload.hasAiChatbot ?? true,
+      hasWhatsAppBot: payload.hasWhatsAppBot ?? false,
+      whatsappPhoneNumberId: payload.whatsappPhoneNumberId,
+      customDomain: payload.customDomain,
+      tableCount: payload.tableCount || 15,
+      currency: payload.currency || 'LKR',
+      kitchenPin: payload.kitchenPin || '2026',
+      waiterPin: payload.waiterPin || '1122',
+    });
 
-    // 2. Field Validations
-    if (!name || !slug || !ownerName || !ownerEmail) {
+    if (!actionResult.success) {
       return NextResponse.json(
-        { error: 'VALIDATION_ERROR', message: 'Name, slug, ownerName, and ownerEmail are mandatory.' },
-        { status: 400 }
+        {
+          error: actionResult.errorCode || 'BAD_REQUEST',
+          message: actionResult.error,
+        },
+        { status: actionResult.errorCode === 'ERR_GEOGRAPHIC_BOUNDARY_VIOLATION' ? 403 : 400 }
       );
     }
 
-    // 3. Fee calculation according to tier and add-ons
-    let baseMonthlyFee = 0;
-    if (tier === 'PLUS') baseMonthlyFee = 49;
-    if (tier === 'PRO') baseMonthlyFee = 129;
-
-    // Add-on pricing: WhatsApp automated bot is +$19/mo if not included
-    let addOnFee = 0;
-    if (hasWhatsAppBot) addOnFee += 19;
-    if (hasAiChatbot && tier === 'FREE') addOnFee += 29;
-
-    const totalMonthlyFee = baseMonthlyFee + addOnFee;
-
-    // 4. Generate Webhook Secret if WhatsApp Bot is enabled
-    const generatedWebhookSecret = hasWhatsAppBot
-      ? (whatsappWebhookVerifyToken || `ceyteq_wa_${crypto.randomBytes(12).toString('hex')}`)
-      : undefined;
-
-    // 5. Construct Provisioned Tenant Object
-    const tenantId = `tenant-${Date.now()}`;
-    const newTenant = {
-      id: tenantId,
-      name,
-      slug: slug.toLowerCase().trim(),
-      subdomain: slug.toLowerCase().trim(),
-      customDomain: customDomain || null,
-      customDomainVerified: false,
-      dnsStatus: customDomain ? 'PENDING' : 'NOT_CONFIGURED',
-      dnsExpectedCname: 'cname.ceyteq.com',
-      ownerName,
-      ownerEmail: ownerEmail.toLowerCase().trim(),
-      ownerPhone: ownerPhone || '+94770000000',
-      ownerPassword: ownerPassword || `${slug}@owner2026`,
-      tier,
-      status: 'ACTIVE',
-      monthlyFee: totalMonthlyFee,
-      // Add-on Toggles
-      hasAiChatbot,
-      hasWhatsAppBot,
-      whatsappPhoneNumberId: hasWhatsAppBot ? whatsappPhoneNumberId : null,
-      whatsappWebhookVerifyToken: generatedWebhookSecret,
-      // Operations
-      address: address || 'Colombo, Sri Lanka',
-      currency,
-      tableCount,
-      kitchenPin,
-      waiterPin,
-      deliveryEnabled: tier !== 'FREE',
-      paymentGatewayEnabled: tier !== 'FREE',
-      totalViews: 0,
-      totalOrders: 0,
-      createdAt: new Date().toISOString(),
-    };
-
-    console.log(`🏢 [TENANT PROVISIONED BY MASTER ADMIN]`);
-    console.log(`   - Restaurant: ${newTenant.name} (${newTenant.slug}.ceyteq.com)`);
-    console.log(`   - Owner:      ${newTenant.ownerEmail} (${newTenant.ownerPhone})`);
-    console.log(`   - Tier:       ${newTenant.tier} ($${newTenant.monthlyFee}/mo)`);
-    console.log(`   - AI Chatbot: ${newTenant.hasAiChatbot ? 'ENABLED' : 'DISABLED'}`);
-    console.log(`   - WA Bot:     ${newTenant.hasWhatsAppBot ? `ENABLED (PhoneID: ${newTenant.whatsappPhoneNumberId})` : 'DISABLED'}`);
-
-    return NextResponse.json({
-      success: true,
-      message: 'Restaurant tenant provisioned successfully by Master Admin.',
-      tenant: newTenant,
-      credentials: {
-        ownerLoginUrl: `https://${newTenant.slug}.ceyteq.com/dashboard/restaurant`,
-        ownerEmail: newTenant.ownerEmail,
-        ownerPassword: newTenant.ownerPassword,
-        kitchenTerminalPin: newTenant.kitchenPin,
-        waiterMobilePin: newTenant.waiterPin,
+    return NextResponse.json(
+      {
+        success: true,
+        message: actionResult.message,
+        tenant: actionResult.data,
       },
-    });
-  } catch (error: any) {
-    console.error('❌ [MASTER TENANT PROVISIONING ERROR]', error);
-    return NextResponse.json({ error: 'INTERNAL_SERVER_ERROR', message: error.message }, { status: 500 });
+      { status: 201 }
+    );
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: 'INTERNAL_ERROR', message: err.message },
+      { status: 500 }
+    );
   }
 }

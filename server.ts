@@ -105,7 +105,103 @@ const usersDatabase: Map<string, UserRecord> = new Map([
       name: 'Ceyteq Super Admin Officer',
       passwordHash: hashPassword('admin2026!', demoSalt),
       salt: demoSalt,
-      role: 'SUPER_ADMIN',
+      role: 'SUPER_MASTER_ADMIN',
+      tier: 'PRO',
+      isEmailVerified: true,
+      mfaEnabled: true,
+      mfaSecret: 'JBSWY3DPEHPK3PXP',
+      failedAttempts: 0,
+    },
+  ],
+  [
+    'digitalrace.master@ceyteq.com',
+    {
+      id: 'usr-brm-dr',
+      email: 'digitalrace.master@ceyteq.com',
+      name: 'Digital Race Branch Master',
+      passwordHash: hashPassword('admin2026!', demoSalt),
+      salt: demoSalt,
+      role: 'DIGITAL_RACE_MASTER',
+      tier: 'PRO',
+      isEmailVerified: true,
+      mfaEnabled: true,
+      mfaSecret: 'JBSWY3DPEHPK3PXP',
+      failedAttempts: 0,
+    },
+  ],
+  [
+    'tastetrip.master@ceyteq.com',
+    {
+      id: 'usr-brm-tt',
+      email: 'tastetrip.master@ceyteq.com',
+      name: 'TasteTrip Delivery Branch Master',
+      passwordHash: hashPassword('admin2026!', demoSalt),
+      salt: demoSalt,
+      role: 'TASTETRIP_MASTER',
+      tier: 'PRO',
+      isEmailVerified: true,
+      mfaEnabled: true,
+      mfaSecret: 'JBSWY3DPEHPK3PXP',
+      failedAttempts: 0,
+    },
+  ],
+  [
+    'div.upcountry.dr@ceyteq.com',
+    {
+      id: 'usr-div-up',
+      email: 'div.upcountry.dr@ceyteq.com',
+      name: 'Up Country Regional Division Admin',
+      passwordHash: hashPassword('admin2026!', demoSalt),
+      salt: demoSalt,
+      role: 'DIVISION_ADMIN',
+      tier: 'PRO',
+      isEmailVerified: true,
+      mfaEnabled: true,
+      mfaSecret: 'JBSWY3DPEHPK3PXP',
+      failedAttempts: 0,
+    },
+  ],
+  [
+    'div.south.dr@ceyteq.com',
+    {
+      id: 'usr-div-so',
+      email: 'div.south.dr@ceyteq.com',
+      name: 'South Regional Division Admin',
+      passwordHash: hashPassword('admin2026!', demoSalt),
+      salt: demoSalt,
+      role: 'DIVISION_ADMIN',
+      tier: 'PRO',
+      isEmailVerified: true,
+      mfaEnabled: true,
+      mfaSecret: 'JBSWY3DPEHPK3PXP',
+      failedAttempts: 0,
+    },
+  ],
+  [
+    'div.western.dr@ceyteq.com',
+    {
+      id: 'usr-div-we',
+      email: 'div.western.dr@ceyteq.com',
+      name: 'Western Regional Division Admin',
+      passwordHash: hashPassword('admin2026!', demoSalt),
+      salt: demoSalt,
+      role: 'DIVISION_ADMIN',
+      tier: 'PRO',
+      isEmailVerified: true,
+      mfaEnabled: true,
+      mfaSecret: 'JBSWY3DPEHPK3PXP',
+      failedAttempts: 0,
+    },
+  ],
+  [
+    'div.north.dr@ceyteq.com',
+    {
+      id: 'usr-div-no',
+      email: 'div.north.dr@ceyteq.com',
+      name: 'North Regional Division Admin',
+      passwordHash: hashPassword('admin2026!', demoSalt),
+      salt: demoSalt,
+      role: 'DIVISION_ADMIN',
       tier: 'PRO',
       isEmailVerified: true,
       mfaEnabled: true,
@@ -635,10 +731,32 @@ async function startServer() {
   });
 
   // ==========================================
-  // MASTER ADMIN EXCLUSIVE: TENANT PROVISIONING API
+  // ENTERPRISE RBAC & GEOGRAPHIC TENANT PROVISIONING API
   // ==========================================
+  app.get('/api/master/tenants', (req: Request, res: Response) => {
+    const roleHeader = (req.headers['x-client-role'] as string) || 'SUPER_MASTER_ADMIN';
+    const divisionHeader = (req.headers['x-client-division'] as string) || '';
+
+    // Sample tenants
+    const sampleStores = [
+      { id: 't-1', name: 'Colombo Harbour Bistro', slug: 'colombo-harbour', division: 'WESTERN', province: 'WESTERN', platformBranch: 'DIGITAL_RACE', tier: 'PRO' },
+      { id: 't-2', name: 'Galle Fort Heritage Cafe', slug: 'galle-fort', division: 'SOUTH', province: 'SOUTHERN', platformBranch: 'DIGITAL_RACE', tier: 'PRO' },
+      { id: 't-3', name: 'Kandy Royal Tea Lounge', slug: 'kandy-royal', division: 'UP_COUNTRY', province: 'CENTRAL', platformBranch: 'DIGITAL_RACE', tier: 'PLUS' },
+      { id: 't-4', name: 'Jaffna Spice Haven', slug: 'jaffna-spice', division: 'NORTH', province: 'NORTHERN', platformBranch: 'DIGITAL_RACE', tier: 'FREE' },
+    ];
+
+    if (roleHeader === 'DIVISION_ADMIN' && divisionHeader) {
+      const filtered = sampleStores.filter(s => s.division === divisionHeader.toUpperCase());
+      res.json({ success: true, count: filtered.length, tenants: filtered });
+      return;
+    }
+
+    res.json({ success: true, count: sampleStores.length, tenants: sampleStores });
+  });
+
   app.post('/api/master/tenants', (req: Request, res: Response) => {
     const roleHeader = (req.headers['x-client-role'] as string) || '';
+    const divisionHeader = (req.headers['x-client-division'] as string) || '';
     const {
       name,
       slug,
@@ -653,16 +771,51 @@ async function startServer() {
       address,
       currency = 'LKR',
       tableCount = 15,
+      province = 'WESTERN',
+      division,
+      platformBranch = 'DIGITAL_RACE',
     } = req.body;
 
-    // Strict Master Admin Lock
-    // Header verification or session check
-    if (roleHeader !== 'MASTER_ADMIN' && roleHeader !== 'SUPER_ADMIN') {
+    const normalizedRole = roleHeader.toUpperCase();
+    const isSuperMaster = normalizedRole === 'SUPER_MASTER_ADMIN' || normalizedRole === 'MASTER_ADMIN' || normalizedRole === 'SUPER_ADMIN';
+    const isBranchMaster = normalizedRole === 'DIGITAL_RACE_MASTER' || normalizedRole === 'TASTETRIP_MASTER';
+    const isDivisionAdmin = normalizedRole === 'DIVISION_ADMIN';
+
+    if (!isSuperMaster && !isBranchMaster && !isDivisionAdmin) {
       res.status(403).json({
-        error: 'Forbidden: Only Master Admin (Info.ceyteq@gmail.com) can provision new restaurant tenants.',
-        code: 'ERR_MASTER_ADMIN_ONLY',
+        error: 'Forbidden: Insufficient privileges to provision restaurant tenants.',
+        code: 'ERR_UNAUTHORIZED_ROLE',
       });
       return;
+    }
+
+    // Geographic boundary check for Division Admin
+    const PROVINCE_TO_DIV: Record<string, string> = {
+      CENTRAL: 'UP_COUNTRY',
+      UVA: 'UP_COUNTRY',
+      SABARAGAMUWA: 'UP_COUNTRY',
+      SOUTHERN: 'SOUTH',
+      EASTERN: 'SOUTH',
+      WESTERN: 'WESTERN',
+      NORTH_WESTERN: 'WESTERN',
+      NORTHERN: 'NORTH',
+      NORTH_CENTRAL: 'NORTH',
+    };
+
+    const targetProvince = province.toUpperCase();
+    const targetDivision = PROVINCE_TO_DIV[targetProvince] || division || 'WESTERN';
+
+    if (isDivisionAdmin) {
+      if (divisionHeader && divisionHeader.toUpperCase() !== targetDivision) {
+        res.status(403).json({
+          error: `Geographic Boundary Violation: Your credentials belong to ${divisionHeader} Division. You cannot register restaurants in ${targetProvince} (${targetDivision} Division).`,
+          code: 'ERR_GEOGRAPHIC_BOUNDARY_VIOLATION',
+          assignedDivision: divisionHeader,
+          targetProvince,
+          targetDivision,
+        });
+        return;
+      }
     }
 
     if (!name || !slug || !ownerName || !ownerEmail) {
@@ -676,6 +829,9 @@ async function startServer() {
       name,
       slug: slug.toLowerCase().trim(),
       subdomain: slug.toLowerCase().trim(),
+      platformBranch,
+      division: targetDivision,
+      province: targetProvince,
       ownerName,
       ownerEmail: ownerEmail.toLowerCase().trim(),
       ownerPhone: ownerPhone || '+94770000000',
@@ -684,7 +840,7 @@ async function startServer() {
       hasAiChatbot,
       hasWhatsAppBot,
       whatsappPhoneNumberId: hasWhatsAppBot ? whatsappPhoneNumberId : null,
-      address: address || 'Colombo, Sri Lanka',
+      address: address || `${province}, Sri Lanka`,
       currency,
       tableCount,
       status: 'ACTIVE',
@@ -697,12 +853,12 @@ async function startServer() {
       eventType: 'TENANT_PROVISIONED',
       severity: 'LOW',
       ipAddress: req.ip || '127.0.0.1',
-      details: `New Restaurant "${newTenant.name}" (${newTenant.slug}) provisioned by Master Admin. Tier: ${tier}, AI Bot: ${hasAiChatbot}, WA Bot: ${hasWhatsAppBot}.`,
+      details: `Restaurant "${newTenant.name}" (${newTenant.slug}) provisioned in ${newTenant.province} (${newTenant.division} Division) by ${roleHeader || 'MASTER_ADMIN'}. Tier: ${tier}.`,
     });
 
     res.json({
       success: true,
-      message: 'Restaurant tenant provisioned successfully by Master Admin.',
+      message: `Restaurant tenant provisioned successfully in ${newTenant.province} (${newTenant.division} Division).`,
       tenant: newTenant,
     });
   });
