@@ -4,18 +4,20 @@
  * Target Path: /middleware.ts
  * 
  * Strict Route Guard Specifications:
- * 1. Upstash Redis Rate Limiting (5 req/min on Auth/OTP, 100 req/min on API)
- * 2. NextAuth Session Token & Division Metadata Extraction
- * 3. Deterministic Post-Login Role Redirection without looping:
+ * 1. Edge sliding-window rate limiting on Auth/OTP routes.
+ * 2. NextAuth Session Token & Division Metadata Extraction.
+ * 3. Structured Diagnostic Logging: [AUTH_ROUTE_GUARD_DECISION].
+ * 4. Deterministic Post-Login Role Redirection without looping:
  *    - SUPER_MASTER_ADMIN -> /dashboard/super
  *    - DIGITAL_RACE_MASTER -> /dashboard/digital-race
  *    - TASTETRIP_MASTER -> /dashboard/tastetrip
- *    - DIVISION_ADMIN -> /dashboard/division/[divisionId] (e.g. /dashboard/division/up-country)
- *    - RESTAURANT_ADMIN -> /dashboard/restaurant/[tenantId]
- * 4. Level 3: Strict Geographic Boundary Enforcement:
+ *    - DIVISION_ADMIN -> /dashboard/division/${token.divisionId}
+ *    - RESTAURANT_ADMIN -> /dashboard/restaurant/${token.tenantId}
+ * 5. Level 3: Strict Geographic Boundary Enforcement:
  *    - Block any Division Admin attempting to view routes outside their assigned divisionId.
- * 5. Level 4: Restaurant Tenant Privilege Boundary & Isolation
- * 6. OWASP Enterprise Security Headers (CSP, Frame-Options, HSTS)
+ *    - Redirect to their authorized division path with 403 status header.
+ * 6. Level 4: Restaurant Tenant Privilege Boundary & Isolation.
+ * 7. OWASP Enterprise Security Headers (CSP, Frame-Options, HSTS).
  * ==============================================================================
  */
 
@@ -72,8 +74,9 @@ export async function middleware(request: NextRequest) {
   const isAuthOrOtpRoute = pathname.startsWith('/api/auth/') || pathname.startsWith('/api/otp/');
 
   if (isAuthOrOtpRoute) {
-    const { allowed, retryAfter } = checkEdgeRateLimit(`auth:${ip}`, 10, 60);
+    const { allowed, retryAfter } = checkEdgeRateLimit(`auth:${ip}`, 15, 60);
     if (!allowed) {
+      console.warn(`[AUTH_ROUTE_GUARD_DECISION] Rate limit triggered for IP: ${ip} on route: ${pathname}`);
       return new NextResponse(
         JSON.stringify({
           error: 'TOO_MANY_REQUESTS',
@@ -157,8 +160,9 @@ export async function middleware(request: NextRequest) {
 
   const isSuperMaster = sessionUser?.role === 'SUPER_MASTER_ADMIN';
 
-  // Helper redirect / error builder
+  // Helper redirect / error builders
   const handleUnauthorized = (reason: string) => {
+    console.warn(`[AUTH_ROUTE_GUARD_DECISION] BLOCKED UNAUTHORIZED: path=${pathname}, reason=${reason}`);
     if (isApiRoute) {
       return NextResponse.json({ error: 'UNAUTHORIZED', message: reason }, { status: 401 });
     }
@@ -168,9 +172,16 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   };
 
-  const handleForbidden = (reason: string) => {
+  const handleForbidden = (reason: string, redirectTarget?: string) => {
+    console.warn(`[AUTH_ROUTE_GUARD_DECISION] BLOCKED FORBIDDEN: path=${pathname}, user=${sessionUser?.email}, reason=${reason}`);
     if (isApiRoute) {
       return NextResponse.json({ error: 'FORBIDDEN', message: reason }, { status: 403 });
+    }
+    if (redirectTarget) {
+      const redirectResponse = NextResponse.redirect(new URL(redirectTarget, request.url));
+      redirectResponse.headers.set('X-Auth-Forbidden-Reason', encodeURIComponent(reason));
+      redirectResponse.headers.set('X-Status-Code', '403');
+      return redirectResponse;
     }
     const unauthUrl = new URL('/unauthorized', request.url);
     unauthUrl.searchParams.set('error', reason);
@@ -180,7 +191,7 @@ export async function middleware(request: NextRequest) {
   // ----------------------------------------------------------------------------
   // 3. DETERMINISTIC POST-LOGIN REDIRECT (Generic /dashboard or /login with active session)
   // ----------------------------------------------------------------------------
-  if (sessionUser && (pathname === '/dashboard' || pathname === '/dashboard/' || pathname === '/login')) {
+  if (sessionUser && (pathname === '/dashboard' || pathname === '/dashboard/' || pathname === '/login' || pathname === '/auth/login')) {
     let targetRedirect = '/dashboard';
 
     switch (sessionUser.role) {
@@ -204,15 +215,14 @@ export async function middleware(request: NextRequest) {
     }
 
     if (pathname !== targetRedirect) {
-      console.log('[AUTH_STEP: ROUTE_GUARD_REDIRECT]', {
-        from: pathname,
-        to: targetRedirect,
-        email: sessionUser.email,
-        role: sessionUser.role,
-        division: sessionUser.assignedDivision,
-      });
+      console.log(`[AUTH_ROUTE_GUARD_DECISION] REDIRECT_DETERMINISTIC: from ${pathname} to ${targetRedirect} for ${sessionUser.email}`);
       return NextResponse.redirect(new URL(targetRedirect, request.url));
     }
+  }
+
+  // Check authentication on all dashboard routes
+  if (pathname.startsWith('/dashboard') && !sessionUser) {
+    return handleUnauthorized('Authentication required to access enterprise dashboards.');
   }
 
   // ----------------------------------------------------------------------------
@@ -228,6 +238,11 @@ export async function middleware(request: NextRequest) {
   if (isSuperPath) {
     if (!sessionUser) return handleUnauthorized('Super Master Admin authentication required.');
     if (!isSuperMaster) {
+      // If Division Admin attempts to access super admin route, redirect to their authorized division path
+      if (sessionUser.role === 'DIVISION_ADMIN') {
+        const divSlug = (sessionUser.assignedDivision || 'up-country').toLowerCase().replace(/_/g, '-');
+        return handleForbidden('Access Denied: Only Super Master Admin can access this domain.', `/dashboard/division/${divSlug}`);
+      }
       return handleForbidden('Access Denied: Only Super Master Admin (Root System Supervisor) can access this domain.');
     }
   }
@@ -241,6 +256,10 @@ export async function middleware(request: NextRequest) {
     if (!sessionUser) return handleUnauthorized('Digital Race Master Admin clearance required.');
     const hasClearance = isSuperMaster || sessionUser.role === 'DIGITAL_RACE_MASTER';
     if (!hasClearance) {
+      if (sessionUser.role === 'DIVISION_ADMIN') {
+        const divSlug = (sessionUser.assignedDivision || 'up-country').toLowerCase().replace(/_/g, '-');
+        return handleForbidden('Access Denied: Requires Digital Race Master clearance.', `/dashboard/division/${divSlug}`);
+      }
       return handleForbidden('Access Denied: Requires Digital Race Master Admin or Super Master Admin role.');
     }
   }
@@ -249,6 +268,10 @@ export async function middleware(request: NextRequest) {
     if (!sessionUser) return handleUnauthorized('TasteTrip Master Admin clearance required.');
     const hasClearance = isSuperMaster || sessionUser.role === 'TASTETRIP_MASTER';
     if (!hasClearance) {
+      if (sessionUser.role === 'DIVISION_ADMIN') {
+        const divSlug = (sessionUser.assignedDivision || 'up-country').toLowerCase().replace(/_/g, '-');
+        return handleForbidden('Access Denied: Requires TasteTrip Master clearance.', `/dashboard/division/${divSlug}`);
+      }
       return handleForbidden('Access Denied: Requires TasteTrip Master Admin or Super Master Admin role.');
     }
   }
@@ -277,19 +300,17 @@ export async function middleware(request: NextRequest) {
         }
 
         if (sessionUser.assignedDivision !== targetDivision) {
+          const authorizedSlug = (sessionUser.assignedDivision || 'up-country').toLowerCase().replace(/_/g, '-');
           const assignedName = sessionUser.assignedDivision
             ? SRI_LANKA_DIVISIONS[sessionUser.assignedDivision]?.name || sessionUser.assignedDivision
             : 'Unknown';
           const targetName = SRI_LANKA_DIVISIONS[targetDivision]?.name || targetDivision;
 
-          console.warn('[AUTH_STEP: DIVISION_BOUNDARY_BLOCKED]', {
-            email: sessionUser.email,
-            assignedDivision: sessionUser.assignedDivision,
-            attemptedDivision: targetDivision,
-          });
+          console.warn(`[AUTH_ROUTE_GUARD_DECISION] DIVISION_BOUNDARY_BLOCKED: user=${sessionUser.email}, assigned=${assignedName}, target=${targetName}`);
 
           return handleForbidden(
-            `Geographic Boundary Violation: Your credentials are restricted strictly to ${assignedName}. You cannot access ${targetName}.`
+            `Geographic Boundary Violation: Your credentials are restricted strictly to ${assignedName}. You cannot access ${targetName}.`,
+            `/dashboard/division/${authorizedSlug}`
           );
         }
       }
@@ -311,7 +332,11 @@ export async function middleware(request: NextRequest) {
     const isDivisionSupervisor = sessionUser.role === 'DIVISION_ADMIN';
 
     if (!isAuthorizedTenant && !isSuperOrBranch && !isDivisionSupervisor) {
-      return handleForbidden('Tenant Isolation Breach: You cannot access restaurants outside your store profile.');
+      const authorizedTenantUrl = sessionUser.tenantId ? `/dashboard/restaurant/${sessionUser.tenantId}` : '/dashboard';
+      return handleForbidden(
+        'Tenant Isolation Breach: You cannot access restaurants outside your store profile.',
+        authorizedTenantUrl
+      );
     }
   }
 
@@ -332,5 +357,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/api/:path*', '/login'],
+  matcher: ['/dashboard/:path*', '/api/:path*', '/login', '/auth/login'],
 };
