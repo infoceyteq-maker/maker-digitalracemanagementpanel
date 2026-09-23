@@ -14,6 +14,7 @@ import { PortalLauncherModal } from './components/PortalLauncherModal';
 import { RbacBarrier } from './components/RbacBarrier';
 import { GlobalErrorBoundary } from './components/GlobalErrorBoundary';
 import { AccountActivationView } from './components/AccountActivationView';
+import { LoginGate } from './components/LoginGate';
 import { INITIAL_TENANTS, INITIAL_ORDERS, INITIAL_DRIVERS, INITIAL_DEPLOYMENTS, generateTenantDailyTrends } from './mockData';
 import { ActiveView, Tenant, TenantStatus, WaiterRequest, CustomerOrder, DeliveryDriver, TasteTripDeployment, AuthUser } from './types';
 import { soundService } from './lib/audioService';
@@ -80,19 +81,12 @@ export default function App() {
   const [isPortalLauncherOpen, setIsPortalLauncherOpen] = useState<boolean>(false);
   const [isActivationMode, setIsActivationMode] = useState<boolean>(false);
 
-  // Authentication & Security User State (Defaulting to Super Master Admin for full exploratory clearance)
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>({
-    id: 'user-super-master-1',
-    email: 'info.ceyteq@gmail.com',
-    name: 'Ceyteq Root System Supervisor',
-    role: 'SUPER_ADMIN',
-    tier: 'PRO',
-    isEmailVerified: true,
-    mfaEnabled: true,
-    status: 'ACTIVE',
-    failedLoginAttempts: 0,
+  // Authentication & Security User State (Loaded from persistent session or null for unauthenticated visitors)
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
+    return credentialsService.getCurrentSessionUser();
   });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isLoginGateOpen, setIsLoginGateOpen] = useState<boolean>(false);
 
   // Real-time table calls state
   const [waiterCalls, setWaiterCalls] = useState<WaiterRequest[]>([
@@ -145,7 +139,11 @@ export default function App() {
     }
 
     if (params.get('login') === 'true') {
-      setIsAuthModalOpen(true);
+      if (!credentialsService.getCurrentSessionUser()) {
+        setIsLoginGateOpen(true);
+      } else {
+        setIsAuthModalOpen(true);
+      }
     }
 
     if (table) {
@@ -475,6 +473,44 @@ export default function App() {
     );
   }
 
+  // Strict Enterprise Login Barrier:
+  // If user is unauthenticated and attempting to access any protected view (Admin/Master/Kitchen/etc)
+  // or if login gate is explicitly requested, render LoginGate full-screen with no bypass!
+  const isProtectedView = activeView !== 'PUBLIC_MENU';
+  if ((!currentUser && isProtectedView) || (!currentUser && isLoginGateOpen)) {
+    return (
+      <LoginGate
+        portalTarget={activeView}
+        onLoginSuccess={(user, _token, redirectUrl) => {
+          setCurrentUser(user);
+          credentialsService.setCurrentSessionUser(user);
+          setIsLoginGateOpen(false);
+          setIsAuthModalOpen(false);
+          if (redirectUrl) {
+            if (
+              redirectUrl.includes('/dashboard/super') ||
+              redirectUrl.includes('division') ||
+              redirectUrl.includes('digital-race') ||
+              redirectUrl.includes('tastetrip')
+            ) {
+              setActiveView('SUPER_ADMIN');
+            } else if (redirectUrl.includes('restaurant')) {
+              setActiveView('CLIENT_DASHBOARD');
+            }
+          }
+        }}
+        onOpenDualOtpReset={() => {
+          setIsLoginGateOpen(false);
+          setIsAuthModalOpen(true);
+        }}
+        onGoToPublicMenu={() => {
+          setIsLoginGateOpen(false);
+          setActiveView('PUBLIC_MENU');
+        }}
+      />
+    );
+  }
+
   return (
     <GlobalErrorBoundary>
       <div className="min-h-screen bg-silk-light-gradient text-slate-900 flex flex-col font-sans relative">
@@ -494,7 +530,13 @@ export default function App() {
               tableNumber={tableNumber}
               setTableNumber={setTableNumber}
               currentUser={currentUser}
-              onOpenAuthModal={() => setIsAuthModalOpen(true)}
+              onOpenAuthModal={() => {
+                if (!currentUser) {
+                  setIsLoginGateOpen(true);
+                } else {
+                  setIsAuthModalOpen(true);
+                }
+              }}
               onOpenPortalLauncher={() => setIsPortalLauncherOpen(true)}
             />
           ) : (
@@ -668,9 +710,16 @@ export default function App() {
           }}
           onLoginSuccess={(user) => {
             setCurrentUser(user);
+            credentialsService.setCurrentSessionUser(user);
+            setIsAuthModalOpen(false);
+            setIsLoginGateOpen(false);
           }}
           onLogout={() => {
+            credentialsService.setCurrentSessionUser(null);
             setCurrentUser(null);
+            setActiveView('PUBLIC_MENU');
+            setIsAuthModalOpen(false);
+            setIsLoginGateOpen(false);
           }}
         />
       </div>

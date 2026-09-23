@@ -416,4 +416,30 @@ export const credentialsService = {
       }
     );
   },
+
+  getCurrentSessionUser(): any | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const saved = localStorage.getItem('ceyteq_session_user_v1');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  },
+
+  setCurrentSessionUser(user: any | null) {
+    if (typeof window === 'undefined') return;
+    try {
+      if (user) {
+        localStorage.setItem('ceyteq_session_user_v1', JSON.stringify(user));
+      } else {
+        localStorage.removeItem('ceyteq_session_user_v1');
+      }
+    } catch {
+      // ignore
+    }
+  },
 };

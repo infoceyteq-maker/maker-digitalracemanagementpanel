@@ -61,7 +61,13 @@ export const SecurityAuthModal: React.FC<SecurityAuthModalProps> = ({
     | 'PASSWORDS_MANAGER'
     | 'DATA_CLEANUP'
     | 'DUAL_OTP_RESET'
-  >('PASSWORDS_MANAGER');
+  >(currentUser?.role === 'SUPER_ADMIN' ? 'PASSWORDS_MANAGER' : 'SIGN_IN');
+
+  useEffect(() => {
+    if (!currentUser) {
+      setFlowStep('SIGN_IN');
+    }
+  }, [currentUser, isOpen]);
 
   // Saved Passwords State
   const [roleCreds, setRoleCreds] = useState<RoleCredentials>(() => credentialsService.getCredentials());
@@ -487,14 +493,15 @@ export const SecurityAuthModal: React.FC<SecurityAuthModalProps> = ({
           {/* Navigation Pill Buttons */}
           <div className="flex items-center gap-1.5 mt-4 pt-3 border-t border-white/10 overflow-x-auto no-scrollbar">
             <button
-              onClick={() => setFlowStep('PASSWORDS_MANAGER')}
-              className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 shrink-0 ${
-                flowStep === 'PASSWORDS_MANAGER' ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black' : 'text-slate-300 hover:text-white bg-white/5'
+              onClick={() => setFlowStep('SIGN_IN')}
+              className={`text-xs px-3.5 py-1.5 rounded-lg font-bold transition-all shrink-0 ${
+                flowStep === 'SIGN_IN' ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black' : 'text-slate-300 hover:text-white bg-white/5'
               }`}
             >
               <Key className="w-3.5 h-3.5" />
-              <span>Passwords & PINs</span>
+              <span>Admin Sign In</span>
             </button>
+
             <button
               onClick={() => setFlowStep('DUAL_OTP_RESET')}
               className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 shrink-0 ${
@@ -502,33 +509,43 @@ export const SecurityAuthModal: React.FC<SecurityAuthModalProps> = ({
               }`}
             >
               <ShieldAlert className="w-3.5 h-3.5 text-cyan-300" />
-              <span>Dual-OTP Reset (Email + WhatsApp)</span>
+              <span>Dual-OTP Reset</span>
             </button>
-            <button
-              onClick={() => setFlowStep('DATA_CLEANUP')}
-              className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 shrink-0 ${
-                flowStep === 'DATA_CLEANUP' ? 'bg-amber-400 text-slate-900 shadow-sm font-black' : 'text-slate-300 hover:text-white bg-white/5'
-              }`}
-            >
-              <Trash2 className="w-3.5 h-3.5 text-amber-300" />
-              <span>Clear Demo Data</span>
-            </button>
-            <button
-              onClick={() => setFlowStep('SIGN_IN')}
-              className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all shrink-0 ${
-                flowStep === 'SIGN_IN' ? 'bg-[#00C8FF] text-[#0A192F]' : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => setFlowStep('ROLE_SWITCHER')}
-              className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all shrink-0 ${
-                flowStep === 'ROLE_SWITCHER' ? 'bg-[#00C8FF] text-[#0A192F]' : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              RBAC Role Switcher
-            </button>
+
+            {currentUser && (
+              <>
+                <button
+                  onClick={() => setFlowStep('ROLE_SWITCHER')}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all shrink-0 ${
+                    flowStep === 'ROLE_SWITCHER' ? 'bg-[#00C8FF] text-[#0A192F] font-black' : 'text-slate-300 hover:text-white bg-white/5'
+                  }`}
+                >
+                  Role Switcher
+                </button>
+
+                {(currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'SUPER_MASTER_ADMIN') && (
+                  <button
+                    onClick={() => setFlowStep('PASSWORDS_MANAGER')}
+                    className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                      flowStep === 'PASSWORDS_MANAGER' ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black' : 'text-slate-300 hover:text-white bg-white/5'
+                    }`}
+                  >
+                    <Key className="w-3.5 h-3.5" />
+                    <span>Passwords & PINs</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => setFlowStep('DATA_CLEANUP')}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                    flowStep === 'DATA_CLEANUP' ? 'bg-amber-400 text-slate-900 shadow-sm font-black' : 'text-slate-300 hover:text-white bg-white/5'
+                  }`}
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Clear Demo Data</span>
+                </button>
+              </>
+            )}
             <button
               onClick={() => setFlowStep('VERIFY_OTP')}
               className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all shrink-0 ${
