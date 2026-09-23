@@ -218,6 +218,8 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        token.email = user.email;
+        token.name = user.name;
         token.role = user.role;
         token.branch = user.branch;
         token.divisionId = user.divisionId;
@@ -243,6 +245,8 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.id || '';
+        session.user.email = token.email || session.user.email || '';
+        session.user.name = token.name || session.user.name || '';
         session.user.role = token.role || 'DIVISION_ADMIN';
         session.user.branch = token.branch || 'ALL';
         session.user.divisionId = token.divisionId || null;

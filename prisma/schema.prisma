@@ -1,15 +1,7 @@
 // ==============================================================================
-// CEYTEQ ENTERPRISE ECOSYSTEM - PRODUCTION PRISMA SCHEMA
-// Architecture: Next.js App Router + Supabase PostgreSQL
-// Platforms:
-//   1. Digital Race: Restaurant Management System & Digital Menu
-//   2. TasteTrip: Food Delivery and Order Management Application
-// 
-// System Hierarchy:
-//   Level 1: SUPER_MASTER_ADMIN (Root: info.ceyteq@gmail.com / +94768607143)
-//   Level 2: DIGITAL_RACE_MASTER, TASTETRIP_MASTER
-//   Level 3: DIVISION_ADMIN (4 Regional Divisions in Sri Lanka, 9 Provinces)
-//   Level 4: RESTAURANT_ADMIN, KITCHEN_STAFF, WAITER_STAFF, DELIVERY_PARTNER
+// CEYTEQ ENTERPRISE ECOSYSTEM - PRISMA SCHEMA DEFINITION
+// Platforms: Digital Race & TasteTrip Multi-Tenant Architecture
+// Target Database: PostgreSQL 15+ (Supabase Cloud / Neon / AWS Aurora)
 // ==============================================================================
 
 generator client {
@@ -17,8 +9,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -32,24 +24,24 @@ enum UserRole {
   TASTETRIP_MASTER
   DIVISION_ADMIN
   RESTAURANT_ADMIN
-  KITCHEN_STAFF
-  WAITER_STAFF
-  DELIVERY_PARTNER
+  RESTAURANT_STAFF
+  DELIVERY_DRIVER
 }
 
 enum PlatformBranch {
   DIGITAL_RACE
   TASTETRIP
+  ALL
 }
 
-enum Division {
+enum DivisionId {
   UP_COUNTRY
   SOUTH
   WESTERN
   NORTH
 }
 
-enum Province {
+enum SriLankanProvince {
   CENTRAL
   UVA
   SABARAGAMUWA
@@ -63,261 +55,183 @@ enum Province {
 
 enum SubscriptionTier {
   FREE
-  PLUS
   PRO
+  PLUS
 }
 
-enum TenantStatus {
+enum AccountStatus {
+  PENDING_ACTIVATION
   ACTIVE
   SUSPENDED
-  PENDING_VERIFICATION
-  ARCHIVED
-}
-
-enum OtpPurpose {
-  PASSWORD_RESET
-  ACCOUNT_VERIFICATION
-  MFA_LOGIN
-  PRIVILEGED_ACTION
-  DIVISION_RESET
 }
 
 // ------------------------------------------------------------------------------
-// RESTAURANT / STORE TENANTS (MULTI-TENANT BOUNDARY)
+// TENANTS (RESTAURANTS / STORES)
 // ------------------------------------------------------------------------------
 
-model Restaurant {
-  id                    String            @id @default(uuid()) @db.Uuid
-  name                  String            @db.VarChar(255)
-  slug                  String            @unique @db.VarChar(100)
-  subdomain             String            @unique @db.VarChar(100)
-  customDomain          String?           @unique @map("custom_domain") @db.VarChar(255)
-  customDomainVerified  Boolean           @default(false) @map("custom_domain_verified")
-  dnsStatus             String            @default("NOT_CONFIGURED") @map("dns_status") @db.VarChar(50)
-  dnsExpectedCname      String            @default("cname.ceyteq.com") @map("dns_expected_cname") @db.VarChar(255)
+model Tenant {
+  id                   String            @id @default(uuid()) @db.Uuid
+  name                 String            @db.VarChar(255)
+  slug                 String            @unique @db.VarChar(100)
+  subdomain            String            @unique @db.VarChar(100)
+  branch               PlatformBranch    @default(DIGITAL_RACE)
+  divisionId           DivisionId        @default(WESTERN)
+  province             SriLankanProvince @default(WESTERN)
+  city                 String            @default("Colombo") @db.VarChar(100)
+  address              String            @db.Text
+  
+  // Subscription & Capabilities
+  subscriptionTier     SubscriptionTier  @default(PRO)
+  monthlyFee           Decimal           @default(129.00) @db.Decimal(10, 2)
+  status               AccountStatus     @default(ACTIVE)
+  
+  // Add-On Modules
+  hasAiChatbot         Boolean           @default(false)
+  hasWhatsAppBot       Boolean           @default(false)
+  whatsAppPhoneNumberId String?          @db.VarChar(100)
+  whatsAppWebhookToken String?           @db.VarChar(255)
+  
+  // Operational Details
+  currency             String            @default("LKR") @db.VarChar(10)
+  tableCount           Int               @default(15)
+  accentColor          String            @default("#00C8FF") @db.VarChar(50)
+  logoUrl              String?           @db.Text
+  coverImageUrl        String?           @db.Text
+  deliveryEnabled      Boolean           @default(true)
+  paymentGatewayEnabled Boolean          @default(true)
 
-  // Geographic Partitioning
-  platformBranch        PlatformBranch    @default(DIGITAL_RACE) @map("platform_branch")
-  division              Division          @default(WESTERN)
-  province              Province          @default(WESTERN)
-  city                  String            @default("Colombo") @db.VarChar(100)
-  address               String            @db.Text
+  // Relationships
+  users                User[]
+  activationTokens     ActivationToken[]
+  division             Division          @relation(fields: [divisionId], references: [id])
 
-  // Owner contact
-  ownerName             String            @map("owner_name") @db.VarChar(255)
-  ownerEmail            String            @map("owner_email") @db.VarChar(255)
-  ownerPhone            String            @map("owner_phone") @db.VarChar(50)
-
-  // Subscription & Tier
-  tier                  SubscriptionTier  @default(PRO)
-  status                TenantStatus      @default(ACTIVE)
-  monthlyFee            Decimal           @default(129.00) @map("monthly_fee") @db.Decimal(10, 2)
-
-  // Add-on Toggles
-  hasAiChatbot          Boolean           @default(true) @map("has_ai_chatbot")
-  hasWhatsAppBot        Boolean           @default(false) @map("has_whatsapp_bot")
-  whatsappPhoneNumberId String?           @map("whatsapp_phone_number_id") @db.VarChar(100)
-  whatsappWebhookVerifyToken String?      @map("whatsapp_webhook_verify_token") @db.VarChar(255)
-
-  // Operations
-  currency              String            @default("LKR") @db.VarChar(10)
-  tableCount            Int               @default(15) @map("table_count")
-  accentColor           String?           @default("#00C8FF") @map("accent_color") @db.VarChar(50)
-  logoUrl               String?           @map("logo_url") @db.Text
-  coverImageUrl         String?           @map("cover_image_url") @db.Text
-  deliveryEnabled       Boolean           @default(true) @map("delivery_enabled")
-  paymentGatewayEnabled Boolean           @default(true) @map("payment_gateway_enabled")
-
-  // Staff PINs
-  kitchenPin            String?           @default("2026") @map("kitchen_pin") @db.VarChar(10)
-  waiterPin             String?           @default("1122") @map("waiter_pin") @db.VarChar(10)
-
-  // Metrics
-  totalViews            BigInt            @default(0) @map("total_views")
-  totalOrders           BigInt            @default(0) @map("total_orders")
-
-  createdAt             DateTime          @default(now()) @map("created_at")
-  updatedAt             DateTime          @updatedAt @map("updated_at")
-
-  // Relations
-  users                 User[]
-  subscriptions         TenantSubscription[]
+  createdAt            DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime          @updatedAt @db.Timestamptz(6)
 
   @@index([slug])
-  @@index([subdomain])
-  @@index([platformBranch])
-  @@index([division])
+  @@index([branch, divisionId])
   @@index([province])
-  @@index([ownerEmail])
-  @@map("restaurants")
+  @@map("tenants")
 }
 
 // ------------------------------------------------------------------------------
-// USERS TABLE (ENTERPRISE RBAC HIERARCHY)
+// GEOGRAPHIC REGIONS (DIVISIONS)
+// ------------------------------------------------------------------------------
+
+model Division {
+  id                 DivisionId          @id
+  name               String              @db.VarChar(100)
+  platformBranch     PlatformBranch      @default(ALL)
+  provinces          SriLankanProvince[]
+  regionalLeadEmail  String?             @db.VarChar(255)
+  regionalOfficeCity String?             @db.VarChar(100)
+
+  // Relationships
+  tenants            Tenant[]
+  users              User[]
+
+  createdAt          DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(6)
+
+  @@map("divisions")
+}
+
+// ------------------------------------------------------------------------------
+// USERS & PRINCIPALS
 // ------------------------------------------------------------------------------
 
 model User {
-  id                    String            @id @default(uuid()) @db.Uuid
-  restaurantId          String?           @map("restaurant_id") @db.Uuid
-  restaurant            Restaurant?       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  id                   String              @id @default(uuid()) @db.Uuid
+  email                String              @unique @db.VarChar(255)
+  phone                String              @unique @db.VarChar(50)
+  name                 String              @db.VarChar(255)
+  passwordHash         String              @db.Text
+  role                 UserRole            @default(RESTAURANT_ADMIN)
+  branch               PlatformBranch      @default(DIGITAL_RACE)
+  divisionId           DivisionId?
+  allowedProvinces     SriLankanProvince[]
+  tenantId             String?             @db.Uuid
+  status               AccountStatus       @default(PENDING_ACTIVATION)
 
-  email                 String            @unique @db.VarChar(255)
-  phone                 String?           @db.VarChar(50)
-  name                  String            @db.VarChar(255)
-  passwordHash          String            @map("password_hash") @db.Text
-  role                  UserRole          @default(RESTAURANT_ADMIN)
-  tier                  SubscriptionTier  @default(PRO)
-  status                TenantStatus      @default(ACTIVE)
+  // Security Flags
+  isEmailVerified      Boolean             @default(false)
+  isPhoneVerified      Boolean             @default(false)
+  mfaEnabled           Boolean             @default(false)
+  mfaSecret            String?             @db.Text
+  failedLoginAttempts  Int                 @default(0)
+  lockedUntil          DateTime?           @db.Timestamptz(6)
+  lastLoginAt          DateTime?           @db.Timestamptz(6)
 
-  // Platform Branch Scope
-  platformBranch        PlatformBranch?   @map("platform_branch")
+  // Relationships
+  tenant               Tenant?             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  division             Division?           @relation(fields: [divisionId], references: [id], onDelete: Restrict)
+  activationTokens     ActivationToken[]
+  otpVerifications     OtpVerification[]
 
-  isEmailVerified       Boolean           @default(false) @map("is_email_verified")
-  isPhoneVerified       Boolean           @default(false) @map("is_phone_verified")
-  mfaEnabled            Boolean           @default(false) @map("mfa_enabled")
-  mfaSecret             String?           @map("mfa_secret") @db.Text
-  failedLoginAttempts   Int               @default(0) @map("failed_login_attempts")
-  lockedUntil           DateTime?         @map("locked_until")
-  lastLoginAt           DateTime?         @map("last_login_at")
-
-  createdAt             DateTime          @default(now()) @map("created_at")
-  updatedAt             DateTime          @updatedAt @map("updated_at")
-
-  // Relations
-  divisionAssignment    DivisionAssignment?
-  otpVerifications      OtpVerification[]
-  auditLogs             AuditLog[]
+  createdAt            DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime            @updatedAt @db.Timestamptz(6)
 
   @@index([email])
   @@index([phone])
   @@index([role])
-  @@index([platformBranch])
-  @@index([restaurantId])
+  @@index([branch, divisionId])
+  @@index([tenantId])
   @@map("users")
 }
 
 // ------------------------------------------------------------------------------
-// DIVISION ASSIGNMENTS (REGIONAL DIVISION ADMIN SCOPE)
+// FIRST-TIME ACCOUNT ACTIVATION TOKENS
+// Single-use, cryptographically signed SHA-256 tokens with 48-hour TTL
 // ------------------------------------------------------------------------------
 
-model DivisionAssignment {
-  id                    String            @id @default(uuid()) @db.Uuid
-  userId                String            @unique @map("user_id") @db.Uuid
-  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+model ActivationToken {
+  id                   String              @id @default(uuid()) @db.Uuid
+  tokenHash            String              @unique @db.Text
+  userId               String              @db.Uuid
+  email                String              @db.VarChar(255)
+  role                 UserRole
+  branch               PlatformBranch      @default(DIGITAL_RACE)
+  divisionId           DivisionId?
+  allowedProvinces     SriLankanProvince[]
+  tenantId             String?             @db.Uuid
+  used                 Boolean             @default(false)
+  expiresAt            DateTime            @db.Timestamptz(6)
+  usedAt               DateTime?           @db.Timestamptz(6)
 
-  platformBranch        PlatformBranch    @map("platform_branch")
-  division              Division
-  allowedProvinces      Province[]        @map("allowed_provinces")
+  // Relationships
+  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant               Tenant?             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  assignedAt            DateTime          @default(now()) @map("assigned_at")
-  updatedAt             DateTime          @updatedAt @map("updated_at")
+  createdAt            DateTime            @default(now()) @db.Timestamptz(6)
 
-  @@index([userId])
-  @@index([platformBranch, division])
-  @@map("division_assignments")
+  @@index([tokenHash])
+  @@index([userId, used])
+  @@index([email])
+  @@map("activation_tokens")
 }
 
 // ------------------------------------------------------------------------------
-// RBAC PERMISSIONS TABLE
-// ------------------------------------------------------------------------------
-
-model Permission {
-  id                    String            @id @default(uuid()) @db.Uuid
-  name                  String            @unique @db.VarChar(100)
-  description           String            @db.Text
-  role                  UserRole
-  canProvisionBranch    Boolean           @default(false) @map("can_provision_branch")
-  canProvisionDivision  Boolean           @default(false) @map("can_provision_division")
-  canProvisionTenant    Boolean           @default(false) @map("can_provision_tenant")
-  canResetCredentials   Boolean           @default(false) @map("can_reset_credentials")
-  canManageFleet        Boolean           @default(false) @map("can_manage_fleet")
-  canConfigureGateways  Boolean           @default(false) @map("can_configure_gateways")
-  globalBypass          Boolean           @default(false) @map("global_bypass")
-
-  createdAt             DateTime          @default(now()) @map("created_at")
-
-  @@index([role])
-  @@map("permissions")
-}
-
-// ------------------------------------------------------------------------------
-// TENANT SUBSCRIPTIONS
-// ------------------------------------------------------------------------------
-
-model TenantSubscription {
-  id                    String            @id @default(uuid()) @db.Uuid
-  restaurantId          String            @map("restaurant_id") @db.Uuid
-  restaurant            Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-
-  tier                  SubscriptionTier
-  monthlyFee            Decimal           @map("monthly_fee") @db.Decimal(10, 2)
-  currentPeriodStart    DateTime          @default(now()) @map("current_period_start")
-  currentPeriodEnd      DateTime          @map("current_period_end")
-  status                String            @default("ACTIVE") @db.VarChar(50)
-  paymentMethod         String?           @default("STRIPE_CARD") @map("payment_method") @db.VarChar(50)
-
-  hasAiChatbotAddon     Boolean           @default(false) @map("has_ai_chatbot_addon")
-  hasWhatsAppBotAddon   Boolean           @default(false) @map("has_whatsapp_bot_addon")
-
-  createdAt             DateTime          @default(now()) @map("created_at")
-  updatedAt             DateTime          @updatedAt @map("updated_at")
-
-  @@index([restaurantId])
-  @@map("tenant_subscriptions")
-}
-
-// ------------------------------------------------------------------------------
-// DUAL-CHANNEL OTP VERIFICATIONS (Zero-Trust Password Reset & MFA)
+// DUAL-CHANNEL OTP VERIFICATIONS (EMAIL + WHATSAPP)
 // ------------------------------------------------------------------------------
 
 model OtpVerification {
-  id                    String            @id @default(uuid()) @db.Uuid
-  userId                String            @map("user_id") @db.Uuid
-  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String              @id @default(uuid()) @db.Uuid
+  userId               String?             @db.Uuid
+  identifier           String              @db.VarChar(255) // email or phone
+  emailOtpHash         String              @db.Text
+  phoneOtpHash         String              @db.Text
+  attempts             Int                 @default(0)
+  maxAttempts          Int                 @default(3)
+  verified             Boolean             @default(false)
+  expiresAt            DateTime            @db.Timestamptz(6)
+  consumedAt           DateTime?           @db.Timestamptz(6)
 
-  purpose               OtpPurpose        @default(PASSWORD_RESET)
-  emailOtpHash          String            @map("email_otp_hash") @db.Text
-  phoneOtpHash          String            @map("phone_otp_hash") @db.Text
+  // Relationships
+  user                 User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  emailVerified         Boolean           @default(false) @map("email_verified")
-  phoneVerified         Boolean           @default(false) @map("phone_verified")
-  isConsumed            Boolean           @default(false) @map("is_consumed")
+  createdAt            DateTime            @default(now()) @db.Timestamptz(6)
 
-  failedAttempts        Int               @default(0) @map("failed_attempts")
-  maxAttempts           Int               @default(3) @map("max_attempts")
-  expiresAt             DateTime          @map("expires_at")
-  resetTokenHash        String?           @map("reset_token_hash") @db.Text
-
-  createdAt             DateTime          @default(now()) @map("created_at")
-  consumedAt            DateTime?         @map("consumed_at")
-
+  @@index([identifier, verified])
   @@index([userId])
-  @@index([expiresAt])
   @@map("otp_verifications")
-}
-
-// ------------------------------------------------------------------------------
-// AUDIT LOGS (CYBERSECURITY & ENTERPRISE AUDIT TRAIL)
-// ------------------------------------------------------------------------------
-
-model AuditLog {
-  id                    String            @id @default(uuid()) @db.Uuid
-  actorId               String?           @map("actor_id") @db.Uuid
-  actor                 User?             @relation(fields: [actorId], references: [id], onDelete: SetNull)
-
-  actorEmail            String            @map("actor_email") @db.VarChar(255)
-  actorRole             UserRole          @map("actor_role")
-  action                String            @db.VarChar(100)
-  targetResource        String            @map("target_resource") @db.VarChar(100)
-  targetId              String?           @map("target_id") @db.VarChar(100)
-  ipAddress             String            @map("ip_address") @db.VarChar(45)
-  userAgent             String?           @map("user_agent") @db.Text
-  metadata              Json?
-
-  createdAt             DateTime          @default(now()) @map("created_at")
-
-  @@index([actorEmail])
-  @@index([action])
-  @@index([createdAt])
-  @@map("audit_logs")
 }

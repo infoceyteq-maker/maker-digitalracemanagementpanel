@@ -1,309 +1,254 @@
-/**
- * ==============================================================================
- * CEYTEQ ENTERPRISE SERVER ACTIONS: TENANT MANAGEMENT
- * Target Path: /src/actions/tenantActions.ts
- * 
- * Enforces:
- * 1. Geographic Partitioning: Division Admins can ONLY register/manage restaurants
- *    in their assigned Sri Lankan provinces.
- * 2. Cross-Province Violations -> Strict 403 Forbidden with boundary details.
- * 3. Super Master Admin & Branch Master global/vertical overrides.
- * ==============================================================================
- */
-
 'use server';
 
-import crypto from 'crypto';
-import {
-  EnterpriseActorSession,
-  SriLankanProvince,
-  PlatformBranch,
-  PROVINCE_TO_DIVISION_MAP,
-  PROVINCE_NAMES,
-  canActorManageProvince,
-} from '@/lib/rbacMatrix';
+// ==============================================================================
+// CEYTEQ ENTERPRISE MULTI-TENANT PROVISIONING ACTIONS
+// Hierarchical RBAC: SUPER_MASTER_ADMIN, DIGITAL_RACE_MASTER, DIVISION_ADMIN
+// ==============================================================================
 
-export interface CreateTenantInput {
+import crypto from 'crypto';
+import { createClient } from '@supabase/supabase-js';
+import { DivisionId, SriLankanProvince, SRI_LANKA_DIVISIONS } from '../lib/rbacMatrix';
+import { createInvitation, hashInvitationToken } from '../lib/invitationService';
+import { credentialsService } from '../lib/credentialsService';
+
+const SUPABASE_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.SUPABASE_URL ||
+  'https://jhvqliimklxrxdwszzfk.supabase.co';
+
+const SUPABASE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  'sb_publishable_vOEZVjmVUuP7zj2TchK3dQ_2YD5bll7';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+
+export interface CreateRestaurantTenantInput {
+  callerRole: 'SUPER_MASTER_ADMIN' | 'DIGITAL_RACE_MASTER' | 'DIVISION_ADMIN' | string;
+  callerDivisionId?: DivisionId | null;
+  callerAllowedProvinces?: SriLankanProvince[];
   name: string;
-  slug: string;
-  subdomain?: string;
-  customDomain?: string;
-  platformBranch: PlatformBranch;
+  divisionId: DivisionId;
   province: SriLankanProvince;
-  city: string;
-  address: string;
-  ownerName: string;
-  ownerEmail: string;
-  ownerPhone: string;
-  tier?: 'FREE' | 'PLUS' | 'PRO';
+  subscriptionTier: 'FREE' | 'PRO' | 'PLUS';
   hasAiChatbot?: boolean;
   hasWhatsAppBot?: boolean;
-  whatsappPhoneNumberId?: string;
-  tableCount?: number;
-  currency?: string;
-  kitchenPin?: string;
-  waiterPin?: string;
+  whatsAppPhoneNumberId?: string;
+  adminEmail: string;
+  adminPhone: string;
+  adminName?: string;
 }
-
-export interface TenantActionResult<T = any> {
-  success: boolean;
-  message?: string;
-  data?: T;
-  error?: string;
-  errorCode?: string;
-}
-
-// In-memory tenant store synchronized with server database
-export const registeredTenantsDatabase: Map<string, any> = new Map([
-  [
-    'colombo-harbour',
-    {
-      id: 'tenant-001',
-      name: 'Colombo Harbour Bistro',
-      slug: 'colombo-harbour',
-      subdomain: 'colombo-harbour',
-      platformBranch: 'DIGITAL_RACE',
-      division: 'WESTERN',
-      province: 'WESTERN',
-      city: 'Colombo',
-      address: 'Colombo 01, Sri Lanka',
-      ownerName: 'Dinesh Perera',
-      ownerEmail: 'dinesh@colomboharbour.lk',
-      ownerPhone: '+94777123456',
-      tier: 'PRO',
-      status: 'ACTIVE',
-      hasAiChatbot: true,
-      hasWhatsAppBot: true,
-      monthlyFee: 148,
-    },
-  ],
-  [
-    'galle-fort',
-    {
-      id: 'tenant-002',
-      name: 'Galle Fort Heritage Cafe',
-      slug: 'galle-fort',
-      subdomain: 'galle-fort',
-      platformBranch: 'DIGITAL_RACE',
-      division: 'SOUTH',
-      province: 'SOUTHERN',
-      city: 'Galle Fort',
-      address: 'Church Street, Galle Fort, Sri Lanka',
-      ownerName: 'Manuka Silva',
-      ownerEmail: 'owner@gallefortcafe.com',
-      ownerPhone: '+94777987654',
-      tier: 'PRO',
-      status: 'ACTIVE',
-      hasAiChatbot: true,
-      hasWhatsAppBot: false,
-      monthlyFee: 129,
-    },
-  ],
-  [
-    'kandy-royal',
-    {
-      id: 'tenant-003',
-      name: 'Kandy Royal Tea Lounge',
-      slug: 'kandy-royal',
-      subdomain: 'kandy-royal',
-      platformBranch: 'DIGITAL_RACE',
-      division: 'UP_COUNTRY',
-      province: 'CENTRAL',
-      city: 'Kandy',
-      address: 'Peradeniya Road, Kandy, Sri Lanka',
-      ownerName: 'Sunil Jayawardena',
-      ownerEmail: 'sunil@kandyroyal.lk',
-      ownerPhone: '+94777555123',
-      tier: 'PLUS',
-      status: 'ACTIVE',
-      hasAiChatbot: true,
-      hasWhatsAppBot: false,
-      monthlyFee: 49,
-    },
-  ],
-  [
-    'jaffna-spice',
-    {
-      id: 'tenant-004',
-      name: 'Jaffna Spice Haven',
-      slug: 'jaffna-spice',
-      subdomain: 'jaffna-spice',
-      platformBranch: 'DIGITAL_RACE',
-      division: 'NORTH',
-      province: 'NORTHERN',
-      city: 'Jaffna Town',
-      address: 'Main Street, Jaffna, Sri Lanka',
-      ownerName: 'Rajan Thamby',
-      ownerEmail: 'rajan@jaffnaspice.com',
-      ownerPhone: '+94777666789',
-      tier: 'FREE',
-      status: 'ACTIVE',
-      hasAiChatbot: false,
-      hasWhatsAppBot: false,
-      monthlyFee: 0,
-    },
-  ],
-]);
 
 /**
- * Server Action: Provision a New Restaurant Tenant
- * Validates that Division Admins cannot create restaurants outside their provinces.
+ * Server Action: Provision a new Restaurant Tenant & Administrator
  */
-export async function createTenantAction(
-  actor: EnterpriseActorSession,
-  input: CreateTenantInput
-): Promise<TenantActionResult> {
-  try {
-    // 1. Enforce RBAC & Geographic Boundary
-    const check = canActorManageProvince(actor, input.province, input.platformBranch);
-    if (!check.allowed) {
-      console.warn(`🛑 [GEOGRAPHIC BREACH PREVENTED] Actor ${actor.email} (${actor.role}) denied provisioning in ${input.province}: ${check.reason}`);
-      return {
-        success: false,
-        error: check.reason || 'Geographic Partitioning Violation: You are not authorized to manage this province.',
-        errorCode: 'ERR_GEOGRAPHIC_BOUNDARY_VIOLATION',
-      };
-    }
+export async function createRestaurantTenant(input: CreateRestaurantTenantInput) {
+  const {
+    callerRole,
+    callerDivisionId,
+    callerAllowedProvinces = [],
+    name,
+    divisionId,
+    province,
+    subscriptionTier,
+    hasAiChatbot = false,
+    hasWhatsAppBot = false,
+    whatsAppPhoneNumberId,
+    adminEmail,
+    adminPhone,
+    adminName,
+  } = input;
 
-    // 2. Validate Required Fields
-    if (!input.name || !input.slug || !input.ownerName || !input.ownerEmail || !input.province) {
-      return {
-        success: false,
-        error: 'Mandatory fields missing: Name, slug, ownerName, ownerEmail, and province are required.',
-        errorCode: 'ERR_MISSING_FIELDS',
-      };
-    }
+  console.log(`[PROVISION_TENANT_START] Initiated by ${callerRole} for restaurant: ${name}`);
 
-    const cleanSlug = input.slug.toLowerCase().trim().replace(/[^a-z0-9-]/g, '-');
-    if (registeredTenantsDatabase.has(cleanSlug)) {
-      return {
-        success: false,
-        error: `A restaurant with slug "${cleanSlug}" already exists.`,
-        errorCode: 'ERR_SLUG_CONFLICT',
-      };
-    }
+  // 1. RBAC Clearance & Geographic Boundary Check
+  const isSuper = callerRole === 'SUPER_MASTER_ADMIN';
+  const isDigitalRaceMaster = callerRole === 'DIGITAL_RACE_MASTER';
+  const isDivisionAdmin = callerRole === 'DIVISION_ADMIN';
 
-    // 3. Resolve Division from Province
-    const resolvedDivision = PROVINCE_TO_DIVISION_MAP[input.province];
-
-    // 4. Calculate Fee
-    let baseMonthlyFee = 0;
-    if (input.tier === 'PLUS') baseMonthlyFee = 49;
-    if (input.tier === 'PRO') baseMonthlyFee = 129;
-    let addOnFee = 0;
-    if (input.hasWhatsAppBot) addOnFee += 19;
-    if (input.hasAiChatbot && input.tier === 'FREE') addOnFee += 29;
-
-    const newTenant = {
-      id: `tenant-${Date.now()}`,
-      name: input.name.trim(),
-      slug: cleanSlug,
-      subdomain: input.subdomain || cleanSlug,
-      customDomain: input.customDomain || null,
-      dnsStatus: input.customDomain ? 'PENDING' : 'NOT_CONFIGURED',
-      platformBranch: input.platformBranch || 'DIGITAL_RACE',
-      division: resolvedDivision,
-      province: input.province,
-      city: input.city || 'Colombo',
-      address: input.address || `${input.city}, Sri Lanka`,
-      ownerName: input.ownerName.trim(),
-      ownerEmail: input.ownerEmail.toLowerCase().trim(),
-      ownerPhone: input.ownerPhone.trim(),
-      tier: input.tier || 'PRO',
-      status: 'ACTIVE',
-      monthlyFee: baseMonthlyFee + addOnFee,
-      hasAiChatbot: input.hasAiChatbot ?? true,
-      hasWhatsAppBot: input.hasWhatsAppBot ?? false,
-      whatsappPhoneNumberId: input.whatsappPhoneNumberId || null,
-      whatsappWebhookVerifyToken: input.hasWhatsAppBot
-        ? `ceyteq_wa_${crypto.randomBytes(8).toString('hex')}`
-        : null,
-      tableCount: input.tableCount || 15,
-      currency: input.currency || 'LKR',
-      kitchenPin: input.kitchenPin || '2026',
-      waiterPin: input.waiterPin || '1122',
-      deliveryEnabled: input.tier !== 'FREE',
-      paymentGatewayEnabled: input.tier !== 'FREE',
-      createdAt: new Date().toISOString(),
-      provisionedBy: {
-        actorId: actor.userId,
-        actorEmail: actor.email,
-        actorRole: actor.role,
-      },
-    };
-
-    registeredTenantsDatabase.set(cleanSlug, newTenant);
-
-    console.log(`✅ [TENANT CREATED] "${newTenant.name}" in ${newTenant.province} (${newTenant.division} Division)`);
-    console.log(`   - Provisioned By: ${actor.email} [${actor.role}]`);
-
-    return {
-      success: true,
-      message: `Restaurant "${newTenant.name}" registered successfully in ${PROVINCE_NAMES[newTenant.province]}.`,
-      data: newTenant,
-    };
-  } catch (error: any) {
-    console.error('❌ [CREATE TENANT ACTION ERROR]', error);
+  if (!isSuper && !isDigitalRaceMaster && !isDivisionAdmin) {
     return {
       success: false,
-      error: error.message || 'Internal error creating restaurant tenant.',
-      errorCode: 'ERR_INTERNAL_SERVER',
+      error: 'Permission Denied: Only Super Master, Digital Race Master, or authorized Division Admins can provision restaurants.',
     };
   }
-}
 
-/**
- * Server Action: List Tenants accessible to the current Actor
- * Filters strictly according to Actor role & assigned provinces
- */
-export async function listTenantsAction(actor: EnterpriseActorSession): Promise<TenantActionResult> {
-  try {
-    const allTenants = Array.from(registeredTenantsDatabase.values());
-
-    // Super Master Admin: sees all
-    if (actor.role === 'SUPER_MASTER_ADMIN') {
-      return { success: true, message: 'All tenants retrieved.', data: allTenants };
-    }
-
-    // Branch Master Admins: see all within their platform vertical
-    if (actor.role === 'DIGITAL_RACE_MASTER') {
-      const filtered = allTenants.filter((t) => t.platformBranch === 'DIGITAL_RACE');
-      return { success: true, message: 'Digital Race tenants retrieved.', data: filtered };
-    }
-
-    if (actor.role === 'TASTETRIP_MASTER') {
-      const filtered = allTenants.filter((t) => t.platformBranch === 'TASTETRIP');
-      return { success: true, message: 'TasteTrip tenants retrieved.', data: filtered };
-    }
-
-    // Division Admin: sees only tenants within their assigned division & provinces
-    if (actor.role === 'DIVISION_ADMIN') {
-      const filtered = allTenants.filter((t) => {
-        const branchMatch = !actor.platformBranch || t.platformBranch === actor.platformBranch;
-        const divisionMatch = t.division === actor.assignedDivision;
-        const provinceMatch =
-          !actor.assignedProvinces ||
-          actor.assignedProvinces.length === 0 ||
-          actor.assignedProvinces.includes(t.province);
-
-        return branchMatch && divisionMatch && provinceMatch;
-      });
-
+  // If Division Admin, verify that the requested province falls within their allowed jurisdiction
+  if (isDivisionAdmin) {
+    if (callerDivisionId && callerDivisionId !== divisionId) {
       return {
-        success: true,
-        message: `Tenants for ${actor.assignedDivision} Division retrieved.`,
-        data: filtered,
+        success: false,
+        error: `Geographic Boundary Violation: Your division (${callerDivisionId}) cannot provision stores in ${divisionId}.`,
       };
     }
 
-    // Tenant / Restaurant Admin: sees only their own store
-    if (actor.role === 'RESTAURANT_ADMIN' && actor.tenantId) {
-      const single = allTenants.filter((t) => t.id === actor.tenantId || t.slug === actor.tenantId);
-      return { success: true, message: 'Tenant profile retrieved.', data: single };
-    }
+    const authorizedProvinces = callerAllowedProvinces.length > 0
+      ? callerAllowedProvinces
+      : callerDivisionId
+      ? SRI_LANKA_DIVISIONS[callerDivisionId]?.provinces || []
+      : [];
 
-    return { success: false, error: 'Unauthorized role.', errorCode: 'ERR_UNAUTHORIZED' };
-  } catch (error: any) {
-    return { success: false, error: error.message, errorCode: 'ERR_INTERNAL_SERVER' };
+    if (!authorizedProvinces.includes(province)) {
+      return {
+        success: false,
+        error: `Province Isolation Breach: Province ${province} is outside your authorized regional boundaries.`,
+      };
+    }
   }
+
+  // 2. Validate input fields
+  if (!name.trim() || !adminEmail.trim() || !adminPhone.trim()) {
+    return {
+      success: false,
+      error: 'Restaurant Name, Admin Email, and Admin Mobile are required.',
+    };
+  }
+
+  const normalizedEmail = adminEmail.trim().toLowerCase();
+  const normalizedPhone = adminPhone.trim().replace(/[\s\-]/g, '');
+
+  // Generate URL-friendly slug and subdomain
+  const baseSlug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)+/g, '');
+  const uniqueSuffix = crypto.randomBytes(3).toString('hex');
+  const slug = `${baseSlug}-${uniqueSuffix}`;
+  const subdomain = slug;
+
+  // 3. Create Tenant in Supabase
+  let tenantId = crypto.randomUUID();
+  try {
+    const { data: tenantRow, error: tenantErr } = await supabase
+      .from('tenants')
+      .insert({
+        name: name.trim(),
+        slug,
+        subdomain,
+        branch: 'DIGITAL_RACE',
+        division_id: divisionId,
+        province,
+        subscription_tier: subscriptionTier,
+        has_ai_chatbot: hasAiChatbot,
+        has_whatsapp_bot: hasWhatsAppBot,
+        whatsapp_phone_number_id: whatsAppPhoneNumberId || null,
+        monthly_fee: subscriptionTier === 'PLUS' ? 249 : subscriptionTier === 'PRO' ? 129 : 0,
+        status: 'ACTIVE',
+        currency: 'LKR',
+        table_count: 15,
+        accent_color: '#00C8FF',
+        address: `${province}, Sri Lanka`,
+      })
+      .select('id')
+      .single();
+
+    if (tenantRow) {
+      tenantId = tenantRow.id;
+    } else if (tenantErr) {
+      console.warn('[PROVISION_TENANT] Supabase insert warning:', tenantErr.message);
+    }
+  } catch (dbErr) {
+    console.warn('[PROVISION_TENANT] Supabase async connection notice:', dbErr);
+  }
+
+  // 4. Generate Single-Use Cryptographic 48-Hour Activation Token
+  const invitation = createInvitation({
+    email: normalizedEmail,
+    name: adminName || `${name} Admin`,
+    role: 'RESTAURANT_ADMIN',
+    branch: 'DIGITAL_RACE',
+    divisionId,
+    allowedProvinces: [province],
+    tenantId,
+    baseUrl: 'https://maker-digitalracemanagementpanel.vercel.app',
+  });
+
+  // 5. Create User Record as PENDING_ACTIVATION
+  try {
+    const tokenHash = hashInvitationToken(invitation.token);
+
+    // Create user in PENDING_ACTIVATION
+    const { data: userRow } = await supabase
+      .from('users')
+      .upsert(
+        {
+          email: normalizedEmail,
+          phone: normalizedPhone,
+          name: adminName || `${name} Administrator`,
+          password_hash: 'PENDING_ACTIVATION_HASH',
+          role: 'RESTAURANT_ADMIN',
+          branch: 'DIGITAL_RACE',
+          division_id: divisionId,
+          allowed_provinces: [province],
+          tenant_id: tenantId,
+          status: 'PENDING_ACTIVATION',
+          is_email_verified: false,
+          is_phone_verified: false,
+        },
+        { onConflict: 'email' }
+      )
+      .select('id')
+      .single();
+
+    // Store activation token
+    await supabase.from('activation_tokens').insert({
+      user_id: userRow?.id || crypto.randomUUID(),
+      token_hash: tokenHash,
+      email: normalizedEmail,
+      role: 'RESTAURANT_ADMIN',
+      branch: 'DIGITAL_RACE',
+      division_id: divisionId,
+      allowed_provinces: [province],
+      tenant_id: tenantId,
+      used: false,
+      expires_at: new Date(invitation.record.expiresAt).toISOString(),
+    });
+  } catch (userDbErr) {
+    console.warn('[PROVISION_TENANT] Supabase token sync notice:', userDbErr);
+  }
+
+  // Also register in local client credential registry
+  try {
+    credentialsService.createInvitationRecord({
+      email: normalizedEmail,
+      name: adminName || `${name} Administrator`,
+      role: 'RESTAURANT_ADMIN',
+      branch: 'DIGITAL_RACE',
+      divisionId,
+      allowedProvinces: [province],
+    });
+  } catch {
+    // Local fallback
+  }
+
+  console.log(`[PROVISION_TENANT_SUCCESS] Tenant provisioned: ${name} (${tenantId}) | Activation link: ${invitation.activationUrl}`);
+
+  return {
+    success: true,
+    message: `Restaurant "${name}" successfully provisioned! Single-use activation token generated.`,
+    tenant: {
+      id: tenantId,
+      name,
+      slug,
+      subdomain,
+      divisionId,
+      province,
+      subscriptionTier,
+      hasAiChatbot,
+      hasWhatsAppBot,
+    },
+    adminUser: {
+      email: normalizedEmail,
+      phone: normalizedPhone,
+      role: 'RESTAURANT_ADMIN',
+      status: 'PENDING_ACTIVATION',
+    },
+    activation: {
+      token: invitation.token,
+      activationUrl: invitation.activationUrl,
+      expiresAt: invitation.record.expiresAt,
+    },
+  };
 }

@@ -166,7 +166,7 @@ export async function middleware(request: NextRequest) {
     if (isApiRoute) {
       return NextResponse.json({ error: 'UNAUTHORIZED', message: reason }, { status: 401 });
     }
-    const loginUrl = new URL('/login', request.url);
+    const loginUrl = new URL('/auth/login', request.url);
     loginUrl.searchParams.set('callbackUrl', pathname);
     loginUrl.searchParams.set('reason', reason);
     return NextResponse.redirect(loginUrl);
