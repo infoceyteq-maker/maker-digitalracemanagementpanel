@@ -158,6 +158,9 @@ Rules:
             name,
             category,
             price,
+            description: description || '',
+            isSpicy: !!isSpicy,
+            isVegetarian: !!isVegetarian,
             currency: 'LKR',
             formattedPrice: `LKR ${price.toLocaleString()}`,
             message: `Successfully created and published "${name}" in the "${category}" category at LKR ${price.toLocaleString()}. It is now live on the QR Digital Menu and Kitchen KOT system.`,
@@ -248,14 +251,19 @@ Rules:
     // 4. STREAMING AGENT EXECUTION VIA VERCEL AI SDK & GOOGLE GEMINI
     // --------------------------------------------------------------------------
     const result = streamText({
-      model: google('gemini-1.5-flash'),
+      // gemini-1.5-flash has been retired by Google. Default to the current
+      // stable flash model; override with the GEMINI_MODEL env var if needed.
+      model: google(process.env.GEMINI_MODEL || 'gemini-3.8-flash'),
       system: systemPrompt,
       messages,
       tools,
       maxSteps: 5, // Allows autonomous multi-step reasoning and tool execution
     });
 
-    return result.toDataStreamResponse();
+    return result.toDataStreamResponse({
+      getErrorMessage: (error: any) =>
+        error?.message || 'The AI agent failed to generate a response.',
+    });
   } catch (error: any) {
     console.error('[AI_CHAT_ROUTE_FATAL]', error);
     return NextResponse.json(

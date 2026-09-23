@@ -58,6 +58,7 @@ export function AiAgentChat({
     handleInputChange,
     handleSubmit,
     isLoading,
+    error,
     reload,
     setMessages,
     append,
@@ -168,7 +169,7 @@ export function AiAgentChat({
                     Digital Race AI Agent
                   </h3>
                   <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 bg-cyan-950 text-cyan-400 border border-cyan-500/30 rounded">
-                    Gemini 1.5
+                    Gemini 3.8
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 truncate max-w-[200px] sm:max-w-[260px]">
@@ -395,6 +396,26 @@ export function AiAgentChat({
                   <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
                 </div>
                 <span>Agent is reasoning and executing tools...</span>
+              </div>
+            )}
+
+            {/* Visible Error State (prevents the chat from appearing "frozen") */}
+            {error && !isLoading && (
+              <div className="flex flex-col items-start space-y-2 my-1 ml-8 p-3 rounded-xl border border-rose-500/40 bg-rose-950/30">
+                <div className="flex items-start space-x-2">
+                  <HelpCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  <p className="text-xs text-rose-200 leading-relaxed break-words">
+                    {error.message || 'The agent could not complete the request.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => reload()}
+                  className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-[11px] font-semibold transition-colors"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Retry</span>
+                </button>
               </div>
             )}
             <div ref={messagesEndRef} />

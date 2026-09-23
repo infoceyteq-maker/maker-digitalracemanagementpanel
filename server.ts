@@ -284,8 +284,19 @@ async function startServer() {
   app.use((req: Request, res: Response, next: NextFunction) => {
     const rawPayload = JSON.stringify({ body: req.body, query: req.query });
 
-    // Check for obvious SQL injection signatures (excluding simulation endpoints)
-    if (!req.path.includes('/api/security/simulate-attack')) {
+    // Free-text AI conversation routes (agent chat, WhatsApp AI, security
+    // simulations) are excluded: natural language legitimately contains words
+    // like "select", "delete" or "insert" and must not be rejected as SQLi.
+    // These routes never interpolate message text into SQL (Supabase client
+    // uses parameterized queries), so the heuristic scan adds no safety there.
+    const isFreeTextAiRoute =
+      req.path.startsWith('/api/chat') ||
+      req.path.startsWith('/api/ai/chat') ||
+      req.path.startsWith('/api/whatsapp/webhook') ||
+      req.path.startsWith('/api/security/simulate-attack');
+
+    // Check for obvious SQL injection signatures (excluding free-text routes)
+    if (!isFreeTextAiRoute) {
       const sqlInjectionRegex = /(\b(UNION(\s+ALL)?|SELECT|INSERT|DROP(\s+TABLE)?|DELETE|ALTER|TRUNCATE)\b)|('.+--)|(\bOR\b\s+['"\d]+\s*=\s*['"\d]+)/i;
       if (sqlInjectionRegex.test(rawPayload)) {
         const incident = {
@@ -1387,18 +1398,23 @@ Your Responsibilities on WhatsApp:
       const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || '';
 
       if (!apiKey) {
-        res.status(500).json({
-          error: 'MISSING_API_KEY',
-          message: 'GEMINI_API_KEY is not configured in environment variables.',
-        });
+        // Plain-text body so the client-side useChat hook surfaces a readable
+        // error message instead of a raw JSON blob.
+        res.status(500).send(
+          'AI Agent is not configured yet. Please set GEMINI_API_KEY in your .env file (get a free key from https://aistudio.google.com/apikey) and restart the server.'
+        );
         return;
       }
+
+      // gemini-1.5-flash has been retired by Google. Default to the current
+      // stable flash model; override with the GEMINI_MODEL env var if needed.
+      const modelName = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 
       const googleSdk = createGoogleGenerativeAI({ apiKey });
       const tenantId = targetTenantId || 'd0000000-0000-0000-0000-000000000001';
 
       const result = streamText({
-        model: googleSdk('gemini-1.5-flash'),
+        model: googleSdk(modelName),
         system: `You are the "Ceyteq Digital Race Autonomous AI Restaurant Operations Assistant" for tenant ${tenantId}.
 You execute real system commands via tool calls:
 - addMenuItem: Adds dishes/drinks to the restaurant catalog.
@@ -1426,6 +1442,9 @@ Be concise, professional, and invoke tools immediately when asked.`,
                 name,
                 category,
                 price,
+                description,
+                isSpicy: !!isSpicy,
+                isVegetarian: !!isVegetarian,
                 currency: 'LKR',
                 formattedPrice: `LKR ${price.toLocaleString()}`,
                 message: `Successfully created and published "${name}" in "${category}" for LKR ${price.toLocaleString()}.`,
@@ -1469,10 +1488,19 @@ Be concise, professional, and invoke tools immediately when asked.`,
         },
       });
 
-      result.pipeDataStreamToResponse(res);
+      result.pipeDataStreamToResponse(res, {
+        // Surface readable error messages to the client instead of generic ones.
+        getErrorMessage: (err: any) => {
+          console.error('[API_CHAT_STREAM_ERROR]', err);
+          return (
+            err?.message ||
+            'The AI agent failed to generate a response. Please check the server logs and try again.'
+          );
+        },
+      });
     } catch (err: any) {
       console.error('[API_CHAT_EXPRESS_ERROR]', err);
-      res.status(500).json({ error: 'AGENT_ERROR', message: err?.message || 'Agent error' });
+      res.status(500).send(err?.message || 'Agent error');
     }
   });
 
