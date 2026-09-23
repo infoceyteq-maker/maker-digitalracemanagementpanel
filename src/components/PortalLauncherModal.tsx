@@ -54,6 +54,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
 
   const portals = [
     {
+      key: 'portal-public-menu',
       id: 'PUBLIC_MENU' as ActiveView,
       title: 'Customer Mobile Menu (QR Code)',
       badge: 'Table # ' + tableNumber,
@@ -65,6 +66,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
       url: `${currentOrigin}/?portal=menu&t=${currentTenant.slug || currentTenant.id}&table=${tableNumber}`,
     },
     {
+      key: 'portal-client-dashboard',
       id: 'CLIENT_DASHBOARD' as ActiveView,
       title: 'Restaurant Owner & Manager Admin',
       badge: currentTenant.name,
@@ -76,6 +78,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
       url: `${currentOrigin}/?portal=restaurant&t=${currentTenant.slug || currentTenant.id}`,
     },
     {
+      key: 'portal-pro-pos',
       id: 'PRO_OPERATIONS' as ActiveView,
       title: 'Kitchen KOT & Live POS Terminal',
       badge: 'Audio Bell Enabled',
@@ -87,6 +90,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
       url: `${currentOrigin}/?portal=pos&t=${currentTenant.slug || currentTenant.id}`,
     },
     {
+      key: 'portal-digital-race-master',
       id: 'SUPER_ADMIN' as ActiveView,
       title: 'Digital Race Platform Master',
       badge: 'Level 2A Master',
@@ -98,6 +102,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
       url: `${currentOrigin}/?portal=digitalrace&role=DIGITAL_RACE_MASTER&login=true`,
     },
     {
+      key: 'portal-tastetrip-master',
       id: 'SUPER_ADMIN' as ActiveView,
       title: 'TasteTrip Delivery Master',
       badge: 'Level 2B Master',
@@ -109,6 +114,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
       url: `${currentOrigin}/?portal=tastetrip&role=TASTETRIP_MASTER&login=true`,
     },
     {
+      key: 'portal-division-admin',
       id: 'SUPER_ADMIN' as ActiveView,
       title: 'Regional Division Admins (8 Districts/Provinces)',
       badge: 'Level 3 RBAC',
@@ -120,6 +126,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
       url: `${currentOrigin}/?portal=division&login=true`,
     },
     {
+      key: 'portal-super-master-admin',
       id: 'SUPER_ADMIN' as ActiveView,
       title: 'Ceyteq Root Super Master Admin',
       badge: 'Root System Supervisor',
@@ -132,9 +139,9 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
     },
   ];
 
-  const handleCopy = (text: string, id: string) => {
+  const handleCopy = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
-    setCopiedLink(id);
+    setCopiedLink(key);
     setTimeout(() => setCopiedLink(null), 2000);
   };
 
@@ -246,7 +253,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
                   const Icon = portal.icon;
                   return (
                     <div
-                      key={portal.id}
+                      key={portal.key}
                       className="border border-slate-200 hover:border-[#00C8FF]/70 rounded-xl p-4 transition-all bg-white hover:shadow-md flex flex-col justify-between group"
                     >
                       <div>
@@ -287,11 +294,11 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
                         </button>
 
                         <button
-                          onClick={() => handleCopy(portal.url, portal.id)}
+                          onClick={() => handleCopy(portal.url, portal.key)}
                           title="Copy Direct Device Link"
                           className="p-1.5 border border-slate-200 hover:border-slate-400 text-slate-600 hover:text-slate-900 rounded-lg transition-colors flex items-center justify-center bg-white"
                         >
-                          {copiedLink === portal.id ? (
+                          {copiedLink === portal.key ? (
                             <Check className="w-4 h-4 text-emerald-600" />
                           ) : (
                             <Copy className="w-4 h-4" />
