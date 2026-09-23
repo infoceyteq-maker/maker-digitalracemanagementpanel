@@ -141,10 +141,13 @@ export default function App() {
     }
 
     if (tenantParam) {
-      const found = INITIAL_TENANTS.find(t => t.slug === tenantParam || t.id === tenantParam);
-      if (found) {
-        setCurrentTenantId(found.id);
-      }
+      setTenants(currentTenants => {
+        const found = currentTenants.find(t => t.slug === tenantParam || t.id === tenantParam);
+        if (found) {
+          setCurrentTenantId(found.id);
+        }
+        return currentTenants;
+      });
     }
   }, []);
 
