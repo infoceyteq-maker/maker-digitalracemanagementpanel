@@ -3,6 +3,10 @@ export type SubscriptionTier = 'FREE' | 'PLUS' | 'PRO';
 export type ThemePalette = 'PALETTE_1' | 'PALETTE_2' | 'PALETTE_3';
 
 export type UserRole = 
+  | 'SUPER_MASTER_ADMIN'
+  | 'DIGITAL_RACE_MASTER'
+  | 'TASTETRIP_MASTER'
+  | 'DIVISION_ADMIN'
   | 'SUPER_ADMIN' 
   | 'MASTER_ADMIN' 
   | 'MANAGER' 

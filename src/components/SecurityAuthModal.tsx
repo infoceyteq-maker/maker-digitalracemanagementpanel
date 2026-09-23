@@ -389,28 +389,40 @@ export const SecurityAuthModal: React.FC<SecurityAuthModalProps> = ({
   // Role presets for testing RBAC
   const PRESET_USERS: { label: string; role: UserRole; tier: SubscriptionTier; desc: string }[] = [
     {
+      label: 'Level 1: Super Master Admin (Root)',
+      role: 'SUPER_ADMIN',
+      tier: 'PRO',
+      desc: 'Root supervisor (info.ceyteq@gmail.com). Global authority over Digital Race, TasteTrip, and all 4 Divisions.',
+    },
+    {
+      label: 'Level 2A: Digital Race Master Admin',
+      role: 'DIGITAL_RACE_MASTER',
+      tier: 'PRO',
+      desc: 'Controls restaurant platform, digital menus, tier quotas (Free/Pro/Plus), AI & WhatsApp modules.',
+    },
+    {
+      label: 'Level 2B: TasteTrip Delivery Master Admin',
+      role: 'TASTETRIP_MASTER',
+      tier: 'PRO',
+      desc: 'Controls food delivery fleet, regional delivery zones, driver tracking, and customer dispatch.',
+    },
+    {
+      label: 'Level 3: Regional Division Admin',
+      role: 'DIVISION_ADMIN',
+      tier: 'PRO',
+      desc: 'Partitioned geographic boundary control (Up Country, South, Western, or North division only).',
+    },
+    {
+      label: 'Level 4: Pro Restaurant Owner',
+      role: 'TENANT_OWNER',
+      tier: 'PRO',
+      desc: 'Full store access: KDS Kitchen Display, Pro POS & KOT, Taste Trip mobile apps, WhatsApp AI.',
+    },
+    {
       label: 'Free Tier Restaurant Owner',
       role: 'TENANT_OWNER',
       tier: 'FREE',
       desc: 'High volume onboarding. QR Menu & social links only. Strictly blocked from Pro KDS & POS.',
-    },
-    {
-      label: 'Plus Tier Restaurant Owner',
-      role: 'TENANT_OWNER',
-      tier: 'PLUS',
-      desc: 'Online delivery, payment gateway & WhatsApp messaging active. KDS/POS locked.',
-    },
-    {
-      label: 'Pro Tier Restaurant Owner',
-      role: 'TENANT_OWNER',
-      tier: 'PRO',
-      desc: 'Full access: KDS Kitchen Display, Pro POS & KOT, Taste Trip mobile apps, WhatsApp AI.',
-    },
-    {
-      label: 'Ceyteq Super Admin',
-      role: 'SUPER_ADMIN',
-      tier: 'PRO',
-      desc: 'Ceyteq Master clearance. Edge DNS mapping, tenant provisioning, system audit.',
     },
     {
       label: 'Kitchen Station Chef',

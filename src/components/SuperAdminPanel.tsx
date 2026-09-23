@@ -42,6 +42,7 @@ import {
 import { Tenant, TenantPlan, TenantStatus, SubscriptionTier, DeliveryDriver } from '../types';
 import { CeyteqLogo } from './CeyteqLogo';
 import { CeyteqAiChatbot } from './CeyteqAiChatbot';
+import { EnterpriseHierarchyManager } from './EnterpriseHierarchyManager';
 import { credentialsService } from '../lib/credentialsService';
 
 interface SuperAdminPanelProps {
@@ -72,7 +73,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
   onOpenAuthModal,
 }) => {
   // Navigation tabs within Master Dashboard (Module 1)
-  const [activeTab, setActiveTab] = useState<'CLIENTS' | 'SALES' | 'FLEET' | 'SETTINGS' | 'AI_COPILOT'>('CLIENTS');
+  const [activeTab, setActiveTab] = useState<'HIERARCHY' | 'CLIENTS' | 'SALES' | 'FLEET' | 'SETTINGS' | 'AI_COPILOT'>('HIERARCHY');
 
   // Search and Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -350,6 +351,21 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
         {/* Master Navigation Tabs */}
         <div className="max-w-7xl mx-auto px-4 sm:px-8 flex items-center gap-2 pt-2 overflow-x-auto no-scrollbar border-t border-sky-100">
           <button
+            onClick={() => setActiveTab('HIERARCHY')}
+            className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${
+              activeTab === 'HIERARCHY'
+                ? 'border-indigo-600 text-indigo-700 bg-indigo-50/50 rounded-t-lg'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4 text-amber-500" />
+            <span>Management Hierarchy (RBAC)</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold uppercase tracking-wider">
+              Root Setup
+            </span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('CLIENTS')}
             className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${
               activeTab === 'CLIENTS'
@@ -558,6 +574,13 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
           </div>
         </div>
       </div>
+
+      {/* TAB 0: ENTERPRISE RBAC & GEOGRAPHIC HIERARCHY MANAGER */}
+      {activeTab === 'HIERARCHY' && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 mt-6">
+          <EnterpriseHierarchyManager onOpenSuperResetModal={onOpenAuthModal} />
+        </div>
+      )}
 
       {/* TAB 1: RESTAURANT CLIENTS & SUBSCRIPTION TIERS */}
       {activeTab === 'CLIENTS' && (

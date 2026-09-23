@@ -78,11 +78,11 @@ export default function App() {
   const [isStandalone, setIsStandalone] = useState<boolean>(false);
   const [isPortalLauncherOpen, setIsPortalLauncherOpen] = useState<boolean>(false);
 
-  // Authentication & Security User State (Defaulting to Super Admin for full exploratory clearance)
+  // Authentication & Security User State (Defaulting to Super Master Admin for full exploratory clearance)
   const [currentUser, setCurrentUser] = useState<AuthUser | null>({
-    id: 'user-master-1',
-    email: 'admin@ceyteq.com',
-    name: 'Ceyteq Security Lead',
+    id: 'user-super-master-1',
+    email: 'info.ceyteq@gmail.com',
+    name: 'Ceyteq Root System Supervisor',
     role: 'SUPER_ADMIN',
     tier: 'PRO',
     isEmailVerified: true,
@@ -193,8 +193,18 @@ export default function App() {
   const currentTenant = tenants.find(t => t.id === currentTenantId) || tenants[0];
 
   // RBAC checks
-  const canAccessProOperations = currentUser?.role === 'SUPER_ADMIN' || currentUser?.tier === 'PRO' || currentTenant.tier === 'PRO';
-  const canAccessSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
+  const canAccessProOperations = 
+    currentUser?.role === 'SUPER_ADMIN' || 
+    currentUser?.role === 'SUPER_MASTER_ADMIN' ||
+    currentUser?.role === 'DIGITAL_RACE_MASTER' ||
+    currentUser?.tier === 'PRO' || 
+    currentTenant.tier === 'PRO';
+
+  const canAccessSuperAdmin = 
+    currentUser?.role === 'SUPER_ADMIN' || 
+    currentUser?.role === 'SUPER_MASTER_ADMIN' || 
+    currentUser?.role === 'DIGITAL_RACE_MASTER' ||
+    currentUser?.role === 'TASTETRIP_MASTER';
 
   // Update tenant details (food prices, stock status, custom domain)
   const handleUpdateTenant = (updatedTenant: Tenant) => {
