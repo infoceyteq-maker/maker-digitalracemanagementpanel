@@ -84,6 +84,14 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
   const [canConfigureAddons, setCanConfigureAddons] = useState(false);
   const [canAccessGlobalConfig, setCanAccessGlobalConfig] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
+  const [activeInvitation, setActiveInvitation] = useState<{
+    email: string;
+    name: string;
+    activationUrl: string;
+    expiresAt: number;
+    token: string;
+  } | null>(null);
+  const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
 
   const togglePasswordVisibility = (id: string) => {
     setVisiblePasswords((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -98,6 +106,49 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
   const showNotification = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3500);
+  };
+
+  const handleGenerateInviteLink = async (admin: {
+    email: string;
+    name: string;
+    role: string;
+    platformBranch?: any;
+    division?: any;
+    allowedProvinces?: any;
+  }) => {
+    setIsGeneratingInvite(true);
+    try {
+      const res = await fetch('/api/auth/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: admin.email,
+          name: admin.name,
+          role: admin.role,
+          branch: admin.platformBranch || 'DIGITAL_RACE',
+          divisionId: admin.division || null,
+          allowedProvinces: admin.allowedProvinces || [],
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.activationUrl) {
+        setActiveInvitation({
+          email: admin.email,
+          name: admin.name,
+          activationUrl: data.activationUrl,
+          expiresAt: data.expiresAt,
+          token: data.token,
+        });
+        navigator.clipboard.writeText(data.activationUrl);
+        showNotification(`✨ 24h Activation Link generated & copied for ${admin.name}!`);
+      } else {
+        alert(data.message || 'Failed to generate invitation link');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Error communicating with invitation API');
+    } finally {
+      setIsGeneratingInvite(false);
+    }
   };
 
   // Open modal for editing existing admin
@@ -1384,7 +1435,7 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
                                 className="flex-1 py-1.5 bg-cyan-600/30 hover:bg-cyan-600/40 text-cyan-200 border border-cyan-500/40 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1"
                               >
                                 <Key className="w-3 h-3" />
-                                Copy Login Kit
+                                Login Kit
                               </button>
                               <a
                                 href={divUrl}
@@ -1395,6 +1446,14 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
                                 <ExternalLink className="w-3.5 h-3.5" />
                               </a>
                             </div>
+
+                            <button
+                              onClick={() => handleGenerateInviteLink(admin)}
+                              className="w-full py-1.5 bg-cyan-950/40 hover:bg-cyan-900/40 text-cyan-300 border border-cyan-500/30 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1.5"
+                            >
+                              <Sparkles className="w-3 h-3 text-cyan-400" />
+                              Generate 24h Activation Link (HMAC)
+                            </button>
                           </div>
                         );
                       })}
@@ -1456,7 +1515,7 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
                                 className="flex-1 py-1.5 bg-rose-600/30 hover:bg-rose-600/40 text-rose-200 border border-rose-500/40 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1"
                               >
                                 <Key className="w-3 h-3" />
-                                Copy Login Kit
+                                Login Kit
                               </button>
                               <a
                                 href={divUrl}
@@ -1467,6 +1526,14 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
                                 <ExternalLink className="w-3.5 h-3.5" />
                               </a>
                             </div>
+
+                            <button
+                              onClick={() => handleGenerateInviteLink(admin)}
+                              className="w-full py-1.5 bg-rose-950/40 hover:bg-rose-900/40 text-rose-300 border border-rose-500/30 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1.5"
+                            >
+                              <Sparkles className="w-3 h-3 text-rose-400" />
+                              Generate 24h Activation Link (HMAC)
+                            </button>
                           </div>
                         );
                       })}
@@ -1487,6 +1554,84 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
               >
                 Close Directory
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* 24-HOUR CRYPTOGRAPHIC INVITATION MODAL                               */}
+      {/* ==================================================================== */}
+      {activeInvitation && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border-2 border-amber-500/50 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold uppercase tracking-wider">
+                  HMAC-SHA256 • 24-Hour Expiry
+                </span>
+                <h4 className="text-base font-black text-white">Single-Use Activation Link Generated</h4>
+                <p className="text-xs text-slate-400">Recipient: <strong className="text-white">{activeInvitation.name}</strong> ({activeInvitation.email})</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3 font-mono text-xs">
+              <div className="text-[11px] text-slate-400 font-sans">
+                This activation link is cryptographically signed, valid for exactly 24 hours, and automatically self-destructs upon initial password configuration:
+              </div>
+              <div className="p-2.5 bg-slate-900 rounded-lg border border-slate-800 break-all text-amber-300 select-all font-mono text-[11px]">
+                {activeInvitation.activationUrl}
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-400 font-sans">
+                <span>Expires in: <strong className="text-amber-400">23 hours, 59 mins</strong></span>
+                <span className="text-emerald-400 font-bold flex items-center gap-1">
+                  <Check className="w-3 h-3" /> Auto-copied to clipboard
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    copyToClipboard(activeInvitation.activationUrl, 'inv-modal-url');
+                    showNotification('🔗 Activation Link copied!');
+                  }}
+                  className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
+                >
+                  {copiedId === 'inv-modal-url' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  Copy Activation Link
+                </button>
+                <a
+                  href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`👋 Hello ${activeInvitation.name}! Here is your single-use Ceyteq Admin account activation link: ${activeInvitation.activationUrl}\n(Valid for 24 hours. Please click to set your permanent password and activate your assigned division access.)`)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5"
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                  WhatsApp
+                </a>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={activeInvitation.activationUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-2"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Test Activation Screen Directly
+                </a>
+                <button
+                  onClick={() => setActiveInvitation(null)}
+                  className="py-2 px-4 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl text-xs font-bold transition-colors"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

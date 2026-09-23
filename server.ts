@@ -4,6 +4,14 @@ import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
+import bcrypt from 'bcryptjs';
+import {
+  createInvitation,
+  verifyInvitationToken,
+  consumeInvitationAndSetPassword,
+  getPostLoginRedirect,
+} from './src/lib/invitationService';
+import { credentialsService } from './src/lib/credentialsService';
 
 dotenv.config();
 
@@ -374,8 +382,147 @@ async function startServer() {
   // 5. AUTHENTICATION & VERIFICATION ENDPOINTS
   // ==========================================
 
-  // A. User Sign-In with Brute Force Counter & 2FA Gate
-  app.post('/api/auth/login', (req: Request, res: Response) => {
+  // --------------------------------------------------------------------------
+  // INVITATION & FIRST-TIME ACCESS ENDPOINTS (HMAC-SHA256 24-HOUR EXPIRY)
+  // --------------------------------------------------------------------------
+  app.post('/api/auth/invite', (req: Request, res: Response) => {
+    try {
+      const { email, name, role, branch, divisionId, allowedProvinces, tenantId } = req.body;
+      if (!email || !name || !role) {
+        res.status(400).json({ error: 'Email, name, and role are required' });
+        return;
+      }
+
+      const host = req.get('host') || 'maker-digitalracemanagementpanel.vercel.app';
+      const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+      const baseUrl = `${protocol}://${host}`;
+
+      const invitation = createInvitation({
+        email,
+        name,
+        role,
+        branch: branch || 'DIGITAL_RACE',
+        divisionId: divisionId || null,
+        allowedProvinces: allowedProvinces || [],
+        tenantId: tenantId || null,
+        baseUrl,
+      });
+
+      // Update credentialsService record if existing
+      const existing = credentialsService.getEnterpriseAdmins().find((a) => a.email.toLowerCase() === email.toLowerCase());
+      if (existing) {
+        credentialsService.upsertEnterpriseAdmin({
+          ...existing,
+          status: 'PENDING',
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Cryptographic activation link generated successfully',
+        activationUrl: invitation.activationUrl,
+        token: invitation.token,
+        expiresAt: invitation.record.expiresAt,
+        record: invitation.record,
+      });
+    } catch (err: any) {
+      console.error('[API_INVITE_ERROR]', err);
+      res.status(500).json({ error: 'Failed to generate invitation token', details: err?.message });
+    }
+  });
+
+  app.get('/api/auth/activate', (req: Request, res: Response) => {
+    try {
+      const token = req.query.token as string;
+      const email = req.query.email as string;
+
+      if (!token || !email) {
+        res.status(400).json({ isValid: false, message: 'Missing token or email query parameters' });
+        return;
+      }
+
+      const result = verifyInvitationToken(token, email);
+      if (!result.isValid || !result.record) {
+        res.status(400).json({
+          isValid: false,
+          error: result.error,
+          message:
+            result.error === 'TOKEN_EXPIRED'
+              ? 'This invitation link has expired (24-hour limit). Please request a new link.'
+              : result.error === 'TOKEN_ALREADY_USED'
+              ? 'This invitation link has already been used. Please log in directly.'
+              : 'Invalid invitation link or security signature.',
+        });
+        return;
+      }
+
+      res.json({
+        isValid: true,
+        email: result.record.email,
+        name: result.record.name,
+        role: result.record.role,
+        branch: result.record.branch,
+        divisionId: result.record.divisionId,
+        allowedProvinces: result.record.allowedProvinces,
+        tenantId: result.record.tenantId,
+      });
+    } catch (err: any) {
+      console.error('[API_ACTIVATE_VALIDATE_ERROR]', err);
+      res.status(500).json({ isValid: false, error: 'Internal validation failure' });
+    }
+  });
+
+  app.post('/api/auth/activate', async (req: Request, res: Response) => {
+    try {
+      const { token, email, password } = req.body;
+      if (!token || !email || !password) {
+        res.status(400).json({ success: false, message: 'Token, email, and password required' });
+        return;
+      }
+
+      const result = await consumeInvitationAndSetPassword(token, email, password);
+      if (!result.success || !result.record) {
+        res.status(400).json({
+          success: false,
+          error: result.error,
+          message: result.error === 'TOKEN_EXPIRED' ? 'Token expired' : 'Invalid or expired invitation token',
+        });
+        return;
+      }
+
+      // Persist in credentialsService
+      const normalized = email.trim().toLowerCase();
+      const allAdmins = credentialsService.getEnterpriseAdmins();
+      const targetAdmin = allAdmins.find((a) => a.email.toLowerCase() === normalized);
+      if (targetAdmin) {
+        credentialsService.upsertEnterpriseAdmin({
+          ...targetAdmin,
+          password: password,
+          status: 'ACTIVE',
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Account successfully activated! Permanent password set.',
+        redirectUrl: result.redirectUrl,
+        user: {
+          email: result.record.email,
+          name: result.record.name,
+          role: result.record.role,
+          branch: result.record.branch,
+          divisionId: result.record.divisionId,
+          tenantId: result.record.tenantId,
+        },
+      });
+    } catch (err: any) {
+      console.error('[API_ACTIVATE_CONSUME_ERROR]', err);
+      res.status(500).json({ success: false, error: 'Activation failure', details: err?.message });
+    }
+  });
+
+  // A. User Sign-In with Brute Force Counter, bcrypt comparison & Division Metadata
+  app.post('/api/auth/login', async (req: Request, res: Response) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -383,7 +530,134 @@ async function startServer() {
       return;
     }
 
-    const user = usersDatabase.get(email.toLowerCase().trim());
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log('[AUTH_STEP: LOGIN_ATTEMPT]', { email: normalizedEmail, timestamp: new Date().toISOString() });
+
+    // 1. Check Root Super Master Admin in credentialsService
+    const sysCreds = credentialsService.getCredentials();
+    if (normalizedEmail === sysCreds.superAdminEmail.toLowerCase()) {
+      let isMatch = password === sysCreds.superAdminPassword;
+      if (!isMatch && (sysCreds.superAdminPassword.startsWith('$2a$') || sysCreds.superAdminPassword.startsWith('$2b$'))) {
+        isMatch = await bcrypt.compare(password, sysCreds.superAdminPassword).catch(() => false);
+      } else if (!isMatch) {
+        isMatch = password === sysCreds.superAdminPassword;
+      }
+
+      console.log('[AUTH_STEP: BCRYPT_HASH_COMPARISON]', { email: normalizedEmail, role: 'SUPER_MASTER_ADMIN', match: isMatch });
+
+      if (!isMatch) {
+        res.status(401).json({ error: 'Invalid Super Master Admin credentials', code: 'ERR_INVALID_CREDENTIALS' });
+        return;
+      }
+
+      const redirectUrl = '/dashboard/super';
+      const token = 'jwt_token_' + Buffer.from(JSON.stringify({
+        sub: 'usr-super-root',
+        email: sysCreds.superAdminEmail,
+        role: 'SUPER_MASTER_ADMIN',
+        branch: 'ALL',
+        divisionId: null,
+        allowedProvinces: ['CENTRAL', 'UVA', 'SABARAGAMUWA', 'SOUTHERN', 'EASTERN', 'WESTERN', 'NORTH_WESTERN', 'NORTHERN', 'NORTH_CENTRAL'],
+        tenantId: null,
+        status: 'ACTIVE',
+        redirectUrl,
+      })).toString('base64');
+
+      res.setHeader('Set-Cookie', `ceyteq_session=${token}; Path=/; HttpOnly; SameSite=Lax`);
+      res.json({
+        user: {
+          id: 'usr-super-root',
+          email: sysCreds.superAdminEmail,
+          name: 'Root System Supervisor (Ceyteq)',
+          role: 'SUPER_MASTER_ADMIN',
+          branch: 'ALL',
+          divisionId: null,
+          allowedProvinces: ['CENTRAL', 'UVA', 'SABARAGAMUWA', 'SOUTHERN', 'EASTERN', 'WESTERN', 'NORTH_WESTERN', 'NORTHERN', 'NORTH_CENTRAL'],
+          tenantId: null,
+          status: 'ACTIVE',
+          redirectUrl,
+        },
+        token,
+        redirectUrl,
+      });
+      return;
+    }
+
+    // 2. Check Enterprise Admins (Branch Masters & 8 Division Admins)
+    const enterpriseAdmins = credentialsService.getEnterpriseAdmins();
+    const admin = enterpriseAdmins.find((a) => a.email.toLowerCase() === normalizedEmail);
+
+    if (admin) {
+      if (admin.status !== 'ACTIVE') {
+        console.warn('[AUTH_STEP: ACCOUNT_INACTIVE]', { email: normalizedEmail, status: admin.status });
+        res.status(403).json({
+          error: `Account is currently ${admin.status}. Please activate your account first.`,
+          code: 'ERR_ACCOUNT_NOT_ACTIVE',
+        });
+        return;
+      }
+
+      let isMatch = false;
+      if (admin.password.startsWith('$2a$') || admin.password.startsWith('$2b$')) {
+        isMatch = await bcrypt.compare(password, admin.password).catch(() => false);
+      } else {
+        isMatch = password === admin.password;
+      }
+
+      console.log('[AUTH_STEP: BCRYPT_HASH_COMPARISON]', {
+        email: normalizedEmail,
+        role: admin.role,
+        divisionId: admin.division,
+        match: isMatch,
+      });
+
+      if (!isMatch) {
+        res.status(401).json({ error: 'Invalid credentials provided', code: 'ERR_INVALID_CREDENTIALS' });
+        return;
+      }
+
+      const redirectUrl = getPostLoginRedirect(admin);
+      const token = 'jwt_token_' + Buffer.from(JSON.stringify({
+        sub: admin.id,
+        email: admin.email,
+        role: admin.role,
+        branch: admin.platformBranch,
+        divisionId: admin.division || null,
+        allowedProvinces: admin.allowedProvinces,
+        tenantId: null,
+        status: admin.status,
+        redirectUrl,
+      })).toString('base64');
+
+      console.log('[AUTH_STEP: SESSION_CREATION]', {
+        email: admin.email,
+        role: admin.role,
+        divisionId: admin.division,
+        redirectUrl,
+      });
+
+      res.setHeader('Set-Cookie', `ceyteq_session=${token}; Path=/; HttpOnly; SameSite=Lax`);
+      res.json({
+        user: {
+          id: admin.id,
+          email: admin.email,
+          name: admin.name,
+          role: admin.role,
+          branch: admin.platformBranch,
+          divisionId: admin.division || null,
+          allowedProvinces: admin.allowedProvinces,
+          tenantId: null,
+          status: admin.status,
+          redirectUrl,
+        },
+        token,
+        redirectUrl,
+      });
+      return;
+    }
+
+    // 3. Fallback: check usersDatabase
+    const user = usersDatabase.get(normalizedEmail);
     if (!user) {
       res.status(401).json({
         error: 'Invalid email or password',
@@ -450,6 +724,7 @@ async function startServer() {
         mfaEnabled: user.mfaEnabled,
       },
       token,
+      redirectUrl: '/dashboard',
     });
   });
 

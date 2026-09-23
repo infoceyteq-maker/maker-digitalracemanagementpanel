@@ -13,6 +13,7 @@ import { SecurityAuthModal } from './components/SecurityAuthModal';
 import { PortalLauncherModal } from './components/PortalLauncherModal';
 import { RbacBarrier } from './components/RbacBarrier';
 import { GlobalErrorBoundary } from './components/GlobalErrorBoundary';
+import { AccountActivationView } from './components/AccountActivationView';
 import { INITIAL_TENANTS, INITIAL_ORDERS, INITIAL_DRIVERS, INITIAL_DEPLOYMENTS, generateTenantDailyTrends } from './mockData';
 import { ActiveView, Tenant, TenantStatus, WaiterRequest, CustomerOrder, DeliveryDriver, TasteTripDeployment, AuthUser } from './types';
 import { soundService } from './lib/audioService';
@@ -77,6 +78,7 @@ export default function App() {
   // Standalone device mode (e.g. tablet on kitchen or table without top navigation bar)
   const [isStandalone, setIsStandalone] = useState<boolean>(false);
   const [isPortalLauncherOpen, setIsPortalLauncherOpen] = useState<boolean>(false);
+  const [isActivationMode, setIsActivationMode] = useState<boolean>(false);
 
   // Authentication & Security User State (Defaulting to Super Master Admin for full exploratory clearance)
   const [currentUser, setCurrentUser] = useState<AuthUser | null>({
@@ -131,6 +133,15 @@ export default function App() {
     } else if (portal === 'master' || portal === 'super' || portal === 'digitalrace' || portal === 'tastetrip' || portal === 'division') {
       setActiveView('SUPER_ADMIN');
       if (standaloneParam === 'true') setIsStandalone(true);
+    }
+
+    const pathname = window.location.pathname;
+    if (
+      pathname.includes('/auth/activate') ||
+      portal === 'activate' ||
+      (params.get('token') && (params.get('email') || pathname.includes('activate')))
+    ) {
+      setIsActivationMode(true);
     }
 
     if (params.get('login') === 'true') {
@@ -429,6 +440,40 @@ export default function App() {
     broadcastOrder(newOrder);
     soundService.playOrderBell();
   };
+
+  if (isActivationMode) {
+    return (
+      <AccountActivationView
+        onSuccessRedirect={(targetUrl, userMeta) => {
+          setIsActivationMode(false);
+          if (userMeta) {
+            setCurrentUser({
+              id: userMeta.id || 'usr-activated',
+              email: userMeta.email,
+              name: userMeta.name,
+              role: userMeta.role === 'DIVISION_ADMIN' ? ('DIVISION_ADMIN' as any) : 'SUPER_ADMIN',
+              tier: 'PRO',
+              isEmailVerified: true,
+              mfaEnabled: false,
+              status: 'ACTIVE',
+              failedLoginAttempts: 0,
+            });
+          }
+          if (targetUrl.includes('tastetrip')) {
+            setActiveView('TASTE_TRIP');
+          } else if (targetUrl.includes('restaurant')) {
+            setActiveView('CLIENT_DASHBOARD');
+          } else {
+            setActiveView('SUPER_ADMIN');
+          }
+        }}
+        onRequestDualOtp={(email) => {
+          setIsActivationMode(false);
+          setIsAuthModalOpen(true);
+        }}
+      />
+    );
+  }
 
   return (
     <GlobalErrorBoundary>

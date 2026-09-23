@@ -259,8 +259,30 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 10. INVITATIONS & FIRST-TIME ACCESS TOKENS TABLE (HMAC-SHA256 24-HOUR EXPIRY)
+CREATE TABLE IF NOT EXISTS public.account_invitations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  email VARCHAR(255) NOT NULL,
+  token_hash TEXT NOT NULL,
+  role user_role NOT NULL,
+  platform_branch platform_branch,
+  division division,
+  allowed_provinces province[],
+  restaurant_id UUID REFERENCES public.restaurants(id) ON DELETE CASCADE,
+  is_used BOOLEAN NOT NULL DEFAULT FALSE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  used_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_invitations_token_hash ON public.account_invitations(token_hash);
+CREATE INDEX IF NOT EXISTS idx_invitations_email ON public.account_invitations(email);
+CREATE INDEX IF NOT EXISTS idx_invitations_role ON public.account_invitations(role);
+CREATE INDEX IF NOT EXISTS idx_invitations_division ON public.account_invitations(division);
+
 -- ==============================================================================
--- 10. POSTGRESQL ROW-LEVEL SECURITY (RLS) POLICIES
+-- 11. POSTGRESQL ROW-LEVEL SECURITY (RLS) POLICIES
 -- ==============================================================================
 ALTER TABLE public.restaurants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
@@ -269,6 +291,7 @@ ALTER TABLE public.permissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tenant_subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.otp_verifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.account_invitations ENABLE ROW LEVEL SECURITY;
 
 -- POLICY 1: SUPER_MASTER_ADMIN (Level 1 Root System Supervisor)
 -- Absolute bypass across all tables
