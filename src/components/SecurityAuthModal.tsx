@@ -50,10 +50,18 @@ export const SecurityAuthModal: React.FC<SecurityAuthModalProps> = ({
   onResetAllDemoData,
   onOpenCreateRestaurant,
 }) => {
-  // Tabs: 'SIGN_IN' | 'REGISTER' | 'VERIFY_OTP' | 'MFA_CHALLENGE' | 'MFA_SETUP' | 'ROLE_SWITCHER' | 'PASSWORDS_MANAGER' | 'DATA_CLEANUP'
-  const [flowStep, setFlowStep] = useState<'SIGN_IN' | 'REGISTER' | 'VERIFY_OTP' | 'MFA_CHALLENGE' | 'MFA_SETUP' | 'ROLE_SWITCHER' | 'PASSWORDS_MANAGER' | 'DATA_CLEANUP'>(
-    'PASSWORDS_MANAGER'
-  );
+  // Tabs: 'SIGN_IN' | 'REGISTER' | 'VERIFY_OTP' | 'MFA_CHALLENGE' | 'MFA_SETUP' | 'ROLE_SWITCHER' | 'PASSWORDS_MANAGER' | 'DATA_CLEANUP' | 'DUAL_OTP_RESET'
+  const [flowStep, setFlowStep] = useState<
+    | 'SIGN_IN'
+    | 'REGISTER'
+    | 'VERIFY_OTP'
+    | 'MFA_CHALLENGE'
+    | 'MFA_SETUP'
+    | 'ROLE_SWITCHER'
+    | 'PASSWORDS_MANAGER'
+    | 'DATA_CLEANUP'
+    | 'DUAL_OTP_RESET'
+  >('PASSWORDS_MANAGER');
 
   // Saved Passwords State
   const [roleCreds, setRoleCreds] = useState<RoleCredentials>(() => credentialsService.getCredentials());
@@ -139,6 +147,94 @@ export const SecurityAuthModal: React.FC<SecurityAuthModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [loginAttempts, setLoginAttempts] = useState(1);
   const maxAttempts = 5;
+
+  // Dual-Channel Verification Password Reset State (Email OTP + WhatsApp OTP)
+  const [dualEmail, setDualEmail] = useState('Info.ceyteq@gmail.com');
+  const [dualPhone, setDualPhone] = useState('+94768607143');
+  const [dualEmailOtp, setDualEmailOtp] = useState('');
+  const [dualPhoneOtp, setDualPhoneOtp] = useState('');
+  const [dualNewPassword, setDualNewPassword] = useState('');
+  const [dualStep, setDualStep] = useState<'REQUEST' | 'VERIFY' | 'SUCCESS'>('REQUEST');
+  const [dualAttemptsLeft, setDualAttemptsLeft] = useState(3);
+  const [dualLockoutSeconds, setDualLockoutSeconds] = useState(0);
+  const [dualSimulatedTokens, setDualSimulatedTokens] = useState<{ emailOtp: string; phoneOtp: string } | null>(null);
+  const [dualDispatchedInfo, setDualDispatchedInfo] = useState<{ emailDest: string; phoneDest: string } | null>(null);
+
+  const handleRequestDualOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setStatusMessage(null);
+    try {
+      const res = await fetch('/api/auth/reset-password/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: dualEmail, phone: dualPhone }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 423) {
+          setDualLockoutSeconds(data.retryAfterSeconds || 900);
+        }
+        setStatusMessage({ type: 'error', text: data.message || data.error || 'Failed to dispatch OTP.' });
+      } else {
+        setDualStep('VERIFY');
+        if (data._simulation) {
+          setDualSimulatedTokens(data._simulation);
+          setDualEmailOtp(data._simulation.emailOtp);
+          setDualPhoneOtp(data._simulation.phoneOtp);
+        }
+        setDualDispatchedInfo({
+          emailDest: data.channels?.email?.destination || dualEmail,
+          phoneDest: data.channels?.phone?.destination || dualPhone,
+        });
+        setStatusMessage({ type: 'success', text: 'Dual-Channel Verification tokens dispatched to Email and WhatsApp!' });
+      }
+    } catch (err: any) {
+      setStatusMessage({ type: 'error', text: err.message || 'Network error requesting Dual OTP.' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyDualOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setStatusMessage(null);
+    try {
+      const res = await fetch('/api/auth/reset-password/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: dualEmail,
+          phone: dualPhone,
+          emailOtp: dualEmailOtp,
+          phoneOtp: dualPhoneOtp,
+          newPassword: dualNewPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 423) {
+          setDualLockoutSeconds(data.remainingSeconds || 900);
+          setStatusMessage({ type: 'error', text: 'Account locked for 15 minutes due to 3 failed attempts.' });
+        } else {
+          setDualAttemptsLeft(data.attemptsRemaining ?? 2);
+          setStatusMessage({ type: 'error', text: data.message || 'Invalid Email or WhatsApp OTP.' });
+        }
+      } else {
+        setDualStep('SUCCESS');
+        setStatusMessage({ type: 'success', text: 'Password reset successful! All prior sessions invalidated.' });
+        if (dualEmail.toLowerCase().includes('info.ceyteq@gmail.com') || dualEmail.toLowerCase().includes('admin')) {
+          credentialsService.setSuperAdminPassword(dualNewPassword);
+          setRoleCreds(credentialsService.getCredentials());
+        }
+      }
+    } catch (err: any) {
+      setStatusMessage({ type: 'error', text: err.message || 'Verification failed.' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Countdown timer for OTP
   useEffect(() => {
@@ -385,7 +481,16 @@ export const SecurityAuthModal: React.FC<SecurityAuthModalProps> = ({
               }`}
             >
               <Key className="w-3.5 h-3.5" />
-              <span>Passwords & PINs (මුරපද)</span>
+              <span>Passwords & PINs</span>
+            </button>
+            <button
+              onClick={() => setFlowStep('DUAL_OTP_RESET')}
+              className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                flowStep === 'DUAL_OTP_RESET' ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black' : 'text-slate-300 hover:text-white bg-white/5'
+              }`}
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-cyan-300" />
+              <span>Dual-OTP Reset (Email + WhatsApp)</span>
             </button>
             <button
               onClick={() => setFlowStep('DATA_CLEANUP')}
@@ -449,6 +554,246 @@ export const SecurityAuthModal: React.FC<SecurityAuthModalProps> = ({
                 <AlertCircle className="w-4 h-4 shrink-0" />
               )}
               <span>{statusMessage.text}</span>
+            </div>
+          )}
+
+          {/* ZERO-TRUST DUAL-CHANNEL VERIFICATION PASSWORD RESET */}
+          {flowStep === 'DUAL_OTP_RESET' && (
+            <div className="space-y-4">
+              <div className="bg-gradient-to-r from-slate-900 to-[#0A192F] text-white p-4 rounded-2xl border border-sky-500/20 shadow-sm">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#00C8FF] to-blue-600 flex items-center justify-center text-slate-950 font-black">
+                    <ShieldAlert className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black text-white">Dual-Channel Zero-Trust Recovery</h3>
+                    <p className="text-[11px] text-sky-200">
+                      Requires simultaneous verification through Resend API (Email) + Meta WhatsApp Cloud API (Phone).
+                    </p>
+                  </div>
+                </div>
+
+                {/* Brute force & lockout status banner */}
+                <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between text-[10px] font-mono">
+                  <span className="text-slate-300">
+                    Upstash Redis Guard: <span className="text-emerald-400 font-bold">5 req/min</span>
+                  </span>
+                  <span className={`${dualAttemptsLeft < 2 ? 'text-rose-400 font-bold' : 'text-sky-300'}`}>
+                    Attempts Allowed: {dualAttemptsLeft} / 3 before 15m Lockout
+                  </span>
+                </div>
+              </div>
+
+              {dualLockoutSeconds > 0 && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>
+                    Account locked due to 3 failed attempts. Please wait {Math.ceil(dualLockoutSeconds / 60)} minutes.
+                  </span>
+                </div>
+              )}
+
+              {/* SUB-STEP 1: Request Initiation */}
+              {dualStep === 'REQUEST' && (
+                <form onSubmit={handleRequestDualOtp} className="space-y-3.5">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      1. Registered Corporate / Master Admin Email
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                      <input
+                        type="email"
+                        value={dualEmail}
+                        onChange={(e) => setDualEmail(e.target.value)}
+                        required
+                        placeholder="Info.ceyteq@gmail.com"
+                        className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold focus:bg-white focus:outline-none focus:border-[#00C8FF]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      2. Registered Mobile Phone (Meta WhatsApp Cloud API)
+                    </label>
+                    <div className="relative">
+                      <Smartphone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                      <input
+                        type="text"
+                        value={dualPhone}
+                        onChange={(e) => setDualPhone(e.target.value)}
+                        required
+                        placeholder="+94768607143"
+                        className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold focus:bg-white focus:outline-none focus:border-[#00C8FF]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-[11px] text-sky-900 flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+                    <span>
+                      The system verifies that both <span className="font-bold">{dualEmail}</span> and{' '}
+                      <span className="font-bold">{dualPhone}</span> belong to the singular Master Admin record before dispatching cryptographically isolated OTPs.
+                    </span>
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-end">
+                    <button
+                      type="submit"
+                      disabled={isLoading || dualLockoutSeconds > 0}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#00A3D9] to-[#0A192F] text-white text-xs font-bold shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {isLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                      <span>Dispatch Dual-Channel Tokens (Resend + WhatsApp) →</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* SUB-STEP 2 & 3: Simultaneous Dual Verification & New Password Commit */}
+              {dualStep === 'VERIFY' && (
+                <form onSubmit={handleVerifyDualOtp} className="space-y-4">
+                  {/* Channels Dispatched Banner */}
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-2.5">
+                      <div className="flex items-center gap-1.5 font-bold text-blue-900">
+                        <Mail className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Channel A: Resend API</span>
+                      </div>
+                      <div className="text-[11px] text-blue-700 mt-1 font-mono">
+                        Sent to {dualDispatchedInfo?.emailDest || dualEmail}
+                      </div>
+                    </div>
+
+                    <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-2.5">
+                      <div className="flex items-center gap-1.5 font-bold text-emerald-900">
+                        <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Channel B: WhatsApp Cloud</span>
+                      </div>
+                      <div className="text-[11px] text-emerald-700 mt-1 font-mono">
+                        Sent to {dualDispatchedInfo?.phoneDest || dualPhone}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sandbox Simulated OTP Pill */}
+                  {dualSimulatedTokens && (
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs">
+                      <div>
+                        <span className="font-bold text-amber-950 block">Sandbox Verification Tokens Ready:</span>
+                        <span className="font-mono text-slate-700 text-[11px]">
+                          Email: <span className="font-bold text-blue-700">{dualSimulatedTokens.emailOtp}</span> | WhatsApp:{' '}
+                          <span className="font-bold text-emerald-700">{dualSimulatedTokens.phoneOtp}</span>
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDualEmailOtp(dualSimulatedTokens.emailOtp);
+                          setDualPhoneOtp(dualSimulatedTokens.phoneOtp);
+                        }}
+                        className="text-[10px] font-bold bg-amber-200 hover:bg-amber-300 text-amber-900 px-2.5 py-1 rounded-lg transition-all"
+                      >
+                        Auto-Fill
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Dual Code Inputs */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-blue-900 block mb-1">
+                        Token 1: Email 6-Digit OTP
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        required
+                        value={dualEmailOtp}
+                        onChange={(e) => setDualEmailOtp(e.target.value)}
+                        placeholder="e.g. 849201"
+                        className="w-full bg-slate-50 border-2 border-blue-200 rounded-xl px-3 py-2 text-center text-sm font-mono font-bold tracking-widest text-slate-900 focus:bg-white focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-emerald-900 block mb-1">
+                        Token 2: WhatsApp 6-Digit OTP
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        required
+                        value={dualPhoneOtp}
+                        onChange={(e) => setDualPhoneOtp(e.target.value)}
+                        placeholder="e.g. 593021"
+                        className="w-full bg-slate-50 border-2 border-emerald-200 rounded-xl px-3 py-2 text-center text-sm font-mono font-bold tracking-widest text-slate-900 focus:bg-white focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Step 4: Password Commit */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      New Cryptographic Password (Bcrypt Salted Commit)
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                      <input
+                        type="password"
+                        required
+                        minLength={8}
+                        value={dualNewPassword}
+                        onChange={(e) => setDualNewPassword(e.target.value)}
+                        placeholder="Enter secure new password (min 8 chars)"
+                        className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-[#00C8FF]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setDualStep('REQUEST')}
+                      className="text-xs text-slate-500 hover:text-slate-800 font-bold"
+                    >
+                      ← Re-request Tokens
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={isLoading || !dualEmailOtp || !dualPhoneOtp || !dualNewPassword}
+                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white text-xs font-bold shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {isLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                      <span>Verify & Commit New Password</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* SUCCESS STATE */}
+              {dualStep === 'SUCCESS' && (
+                <div className="text-center py-6 space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-sm font-black text-slate-900">Zero-Trust Recovery Completed</h3>
+                  <p className="text-xs text-slate-600 max-w-sm mx-auto">
+                    Your password has been successfully salted and committed to the database. All existing JWT sessions and refresh tokens have been revoked.
+                  </p>
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setFlowStep('SIGN_IN')}
+                      className="px-5 py-2 rounded-xl bg-[#00C8FF] hover:bg-[#00B2E3] text-[#0A192F] text-xs font-black shadow-sm transition-all"
+                    >
+                      Proceed to Sign In →
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -736,14 +1081,23 @@ export const SecurityAuthModal: React.FC<SecurityAuthModalProps> = ({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                   <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Super Admin Email</label>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Root Master Email</label>
                     <input
                       type="text"
                       readOnly
                       value={roleCreds.superAdminEmail}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono text-slate-700 cursor-not-allowed text-xs"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono text-slate-900 font-bold cursor-not-allowed text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">Master Mobile (WhatsApp)</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={roleCreds.superAdminPhone || '+94768607143'}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono text-slate-900 font-bold cursor-not-allowed text-xs"
                     />
                   </div>
                   <div>

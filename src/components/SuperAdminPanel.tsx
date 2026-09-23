@@ -100,6 +100,8 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
   const [newTier, setNewTier] = useState<SubscriptionTier>('PRO');
   const [newCustomDomain, setNewCustomDomain] = useState('');
   const [newHasAiChatbot, setNewHasAiChatbot] = useState<boolean>(true);
+  const [newHasWhatsAppBot, setNewHasWhatsAppBot] = useState<boolean>(true);
+  const [newWhatsAppPhoneId, setNewWhatsAppPhoneId] = useState<string>('');
   const [newStarterMenu, setNewStarterMenu] = useState<'STARTER' | 'BLANK'>('STARTER');
   const [createdNotice, setCreatedNotice] = useState<{
     name: string;
@@ -150,11 +152,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
       dnsStatus: newCustomDomain ? 'PENDING' : 'NOT_CONFIGURED',
       deliveryEnabled: newTier !== 'FREE',
       paymentGatewayEnabled: newTier !== 'FREE',
-      whatsappMessagingEnabled: newTier !== 'FREE',
+      whatsappMessagingEnabled: newHasWhatsAppBot || newTier !== 'FREE',
       hasAiChatbot: newHasAiChatbot,
+      hasWhatsAppBot: newHasWhatsAppBot,
+      whatsappPhoneNumberId: newHasWhatsAppBot ? (newWhatsAppPhoneId.trim() || undefined) : undefined,
+      whatsappWebhookVerifyToken: newHasWhatsAppBot ? 'ceyteq_wa_webhook_verify_2026' : undefined,
       aiChatbotConfig: {
         enabled: newHasAiChatbot,
-        whatsappPhoneNumberId: '',
+        whatsappPhoneNumberId: newWhatsAppPhoneId.trim(),
         whatsappVerifyToken: 'ceyteq_wa_verify_token',
         autoReplyEnabled: true,
         botTone: 'POLITE_CONCIERGE',
@@ -1423,13 +1428,13 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-xs font-bold text-slate-900">AI Chatbot Messaging System</span>
+                        <span className="text-xs font-bold text-slate-900">AI Chatbot System</span>
                         <span className="text-[9px] bg-emerald-600 text-white font-black px-1.5 py-0.5 rounded">
-                          {newTier === 'PRO' ? 'INCLUDED IN PRO' : 'PRO / PLUS ADD-ON (+$29/mo)'}
+                          {newTier === 'PRO' ? 'INCLUDED IN PRO' : 'PRO / PLUS ADD-ON'}
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-600 mt-1 leading-snug">
-                        Equips the restaurant with a WhatsApp-integrated AI concierge powered by Gemini NLP for 24/7 guest inquiries, reservations & automated menu orders.
+                        Equips the restaurant with an AI concierge powered by Google AI Studio Gemini API for 24/7 guest inquiries, reservations & menu recommendations.
                       </p>
                     </div>
                   </div>
@@ -1440,6 +1445,49 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
                     className="rounded accent-emerald-600 w-4 h-4 mt-1.5 cursor-pointer shrink-0"
                   />
                 </label>
+              </div>
+
+              {/* WhatsApp Automated Bot Messaging Add-on Toggle */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-green-50/90 to-emerald-50/90 border border-green-200">
+                <label className="flex items-start justify-between cursor-pointer gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-green-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                      <Smartphone className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-bold text-slate-900">WhatsApp Automated Bot Messaging</span>
+                        <span className="text-[9px] bg-green-700 text-white font-black px-1.5 py-0.5 rounded">
+                          META CLOUD API
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-1 leading-snug">
+                        Direct connection to Meta WhatsApp Cloud API for automated OTP notifications, order alerts, and live messaging.
+                      </p>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={newHasWhatsAppBot}
+                    onChange={(e) => setNewHasWhatsAppBot(e.target.checked)}
+                    className="rounded accent-green-600 w-4 h-4 mt-1.5 cursor-pointer shrink-0"
+                  />
+                </label>
+
+                {newHasWhatsAppBot && (
+                  <div className="mt-3 pt-3 border-t border-green-200/60">
+                    <label className="text-[11px] font-bold text-green-950 block mb-1">
+                      WhatsApp Phone Number ID (from Meta Developer Console)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 109876543210987"
+                      value={newWhatsAppPhoneId}
+                      onChange={(e) => setNewWhatsAppPhoneId(e.target.value)}
+                      className="w-full bg-white border border-green-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-mono focus:outline-none focus:border-green-500 shadow-2xs"
+                    />
+                  </div>
+                )}
               </div>
 
               <div>

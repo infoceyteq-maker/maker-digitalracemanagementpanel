@@ -136,6 +136,9 @@ export interface Tenant {
   paymentGatewayEnabled: boolean;
   whatsappMessagingEnabled: boolean;
   hasAiChatbot?: boolean;
+  hasWhatsAppBot?: boolean;
+  whatsappPhoneNumberId?: string;
+  whatsappWebhookVerifyToken?: string;
   aiChatbotConfig?: AiChatbotConfig;
   dailyTrends?: DailyTrend[];
   categories: Category[];

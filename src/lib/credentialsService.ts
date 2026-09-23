@@ -7,6 +7,7 @@
 export interface RoleCredentials {
   superAdminPassword: string;
   superAdminEmail: string;
+  superAdminPhone: string;
   defaultKitchenPin: string;
   defaultWaiterPin: string;
   tenantPasswords: Record<string, {
@@ -20,7 +21,8 @@ export interface RoleCredentials {
 const STORAGE_KEY = 'ceyteq_credentials_v1';
 
 const DEFAULT_CREDENTIALS: RoleCredentials = {
-  superAdminEmail: 'admin@ceyteq.com',
+  superAdminEmail: 'Info.ceyteq@gmail.com',
+  superAdminPhone: '+94768607143',
   superAdminPassword: 'admin@ceyteq2026',
   defaultKitchenPin: '2026',
   defaultWaiterPin: '1122',
