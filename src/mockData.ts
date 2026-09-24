@@ -1,5 +1,20 @@
 import { Tenant, DailyTrend, CustomerOrder, DeliveryDriver, TasteTripDeployment } from './types';
 
+/** A relative date in Sri Lanka, formatted as YYYY-MM-DD. */
+function todayColomboISODate(offsetDays: number): string {
+  const date = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Colombo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')!.value;
+  const month = parts.find((part) => part.type === 'month')!.value;
+  const day = parts.find((part) => part.type === 'day')!.value;
+  return `${year}-${month}-${day}`;
+}
+
 export function generateTenantDailyTrends(baseViews: number, baseOrders: number, avgSpend: number): DailyTrend[] {
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const dates = [
@@ -38,7 +53,7 @@ export const INITIAL_TENANTS: Tenant[] = [
     plan: 'PRO',
     tier: 'PRO',
     monthlyFee: 69,
-    createdAt: '2026-02-10',
+    createdAt: todayColomboISODate(-12),
     subdomain: 'ceylon-spice',
     customDomain: 'menu.ceylonspice.com',
     customDomainVerified: true,
@@ -228,7 +243,7 @@ export const INITIAL_TENANTS: Tenant[] = [
     plan: 'ENTERPRISE',
     tier: 'PLUS',
     monthlyFee: 149,
-    createdAt: '2026-01-15',
+    createdAt: todayColomboISODate(-20),
     subdomain: 'ocean-colombo',
     customDomain: 'menu.theocean.lk',
     customDomainVerified: true,
@@ -291,7 +306,7 @@ export const INITIAL_TENANTS: Tenant[] = [
     plan: 'STARTER',
     tier: 'FREE',
     monthlyFee: 29,
-    createdAt: '2026-03-01',
+    createdAt: todayColomboISODate(-5),
     subdomain: 'kandy-view',
     customDomain: 'menu.kandymountain.com',
     customDomainVerified: false,

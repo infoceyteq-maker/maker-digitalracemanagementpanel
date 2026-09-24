@@ -170,11 +170,6 @@ function canApproveDivision(actorRole: string, branch?: string | null): boolean 
   return false;
 }
 
-/** Real ISO timestamps anchored to the Asia/Colombo (UTC+05:30) seed dates. */
-function colomboISO(dateStr: string): string {
-  return new Date(`${dateStr}T09:00:00+05:30`).toISOString();
-}
-
 /** Province assignments per division (mirrors src/lib/rbacMatrix.ts SRI_LANKA_DIVISIONS). */
 const DIVISION_PROVINCES: Record<string, string[]> = {
   UP_COUNTRY: ['CENTRAL', 'UVA', 'SABARAGAMUWA'],
@@ -242,9 +237,10 @@ function newNumericOtp(): string {
 async function seedAdminsOnBoot() {
   if (adminsStore.length > 0) return;
   const hash = async (p: string) => bcrypt.hash(p, 10);
+  const nowISO = () => new Date().toISOString();
 
   // ------------------------------------------------------------------
-  // REAL HIERARCHY (no fake demo junk) — Asia/Colombo createdAt
+  // REAL HIERARCHY (no fake demo junk) — createdAt set at startup
   // ------------------------------------------------------------------
 
   // LEVEL 1 — SUPER MASTER (only role allowed to DELETE admins/divisions)
@@ -263,7 +259,7 @@ async function seedAdminsOnBoot() {
       'WESTERN', 'NORTH_WESTERN', 'NORTHERN', 'NORTH_CENTRAL',
     ],
     status: 'ACTIVE',
-    createdAt: colomboISO('2026-01-05'),
+    createdAt: nowISO(),
   });
 
   // LEVEL 2A — DIGITAL RACE MASTER
@@ -282,7 +278,7 @@ async function seedAdminsOnBoot() {
       'WESTERN', 'NORTH_WESTERN', 'NORTHERN', 'NORTH_CENTRAL',
     ],
     status: 'ACTIVE',
-    createdAt: colomboISO('2026-01-15'),
+    createdAt: nowISO(),
     createdBy: 'adm-super-root',
   });
 
@@ -302,7 +298,7 @@ async function seedAdminsOnBoot() {
       'WESTERN', 'NORTH_WESTERN', 'NORTHERN', 'NORTH_CENTRAL',
     ],
     status: 'ACTIVE',
-    createdAt: colomboISO('2026-01-15'),
+    createdAt: nowISO(),
     createdBy: 'adm-super-root',
   });
 
@@ -314,16 +310,15 @@ async function seedAdminsOnBoot() {
     branch: 'DIGITAL_RACE' | 'TASTETRIP';
     branchSuffix: 'dr' | 'tt';
     phone: string;
-    created: string;
   }> = [
-    { slug: 'upcountry', division: 'UP_COUNTRY', name: 'Up Country Division Admin', branch: 'DIGITAL_RACE', branchSuffix: 'dr', phone: '+94772220001', created: '2026-02-01' },
-    { slug: 'south',     division: 'SOUTH',      name: 'South Division Admin',      branch: 'DIGITAL_RACE', branchSuffix: 'dr', phone: '+94772220002', created: '2026-02-01' },
-    { slug: 'western',   division: 'WESTERN',    name: 'Western Division Admin',    branch: 'DIGITAL_RACE', branchSuffix: 'dr', phone: '+94772220003', created: '2026-02-01' },
-    { slug: 'north',     division: 'NORTH',      name: 'North Division Admin',      branch: 'DIGITAL_RACE', branchSuffix: 'dr', phone: '+94772220004', created: '2026-02-01' },
-    { slug: 'upcountry', division: 'UP_COUNTRY', name: 'Up Country Division Admin (TasteTrip)', branch: 'TASTETRIP', branchSuffix: 'tt', phone: '+94773330001', created: '2026-02-10' },
-    { slug: 'south',     division: 'SOUTH',      name: 'South Division Admin (TasteTrip)',      branch: 'TASTETRIP', branchSuffix: 'tt', phone: '+94773330002', created: '2026-02-10' },
-    { slug: 'western',   division: 'WESTERN',    name: 'Western Division Admin (TasteTrip)',    branch: 'TASTETRIP', branchSuffix: 'tt', phone: '+94773330003', created: '2026-02-10' },
-    { slug: 'north',     division: 'NORTH',      name: 'North Division Admin (TasteTrip)',      branch: 'TASTETRIP', branchSuffix: 'tt', phone: '+94773330004', created: '2026-02-10' },
+    { slug: 'upcountry', division: 'UP_COUNTRY', name: 'Up Country Division Admin', branch: 'DIGITAL_RACE', branchSuffix: 'dr', phone: '+94772220001' },
+    { slug: 'south',     division: 'SOUTH',      name: 'South Division Admin',      branch: 'DIGITAL_RACE', branchSuffix: 'dr', phone: '+94772220002' },
+    { slug: 'western',   division: 'WESTERN',    name: 'Western Division Admin',    branch: 'DIGITAL_RACE', branchSuffix: 'dr', phone: '+94772220003' },
+    { slug: 'north',     division: 'NORTH',      name: 'North Division Admin',      branch: 'DIGITAL_RACE', branchSuffix: 'dr', phone: '+94772220004' },
+    { slug: 'upcountry', division: 'UP_COUNTRY', name: 'Up Country Division Admin (TasteTrip)', branch: 'TASTETRIP', branchSuffix: 'tt', phone: '+94773330001' },
+    { slug: 'south',     division: 'SOUTH',      name: 'South Division Admin (TasteTrip)',      branch: 'TASTETRIP', branchSuffix: 'tt', phone: '+94773330002' },
+    { slug: 'western',   division: 'WESTERN',    name: 'Western Division Admin (TasteTrip)',    branch: 'TASTETRIP', branchSuffix: 'tt', phone: '+94773330003' },
+    { slug: 'north',     division: 'NORTH',      name: 'North Division Admin (TasteTrip)',      branch: 'TASTETRIP', branchSuffix: 'tt', phone: '+94773330004' },
   ];
 
   for (const d of divisionDefs) {
@@ -339,7 +334,7 @@ async function seedAdminsOnBoot() {
       platformBranch: d.branch,
       allowedProvinces: DIVISION_PROVINCES[d.division] || [],
       status: 'ACTIVE',
-      createdAt: colomboISO(d.created),
+      createdAt: nowISO(),
       createdBy: d.branch === 'DIGITAL_RACE' ? 'adm-dr-master' : 'adm-tt-master',
     });
   }
