@@ -87,6 +87,8 @@ export default function App() {
   });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [isLoginGateOpen, setIsLoginGateOpen] = useState<boolean>(false);
+  // Prefill captured from admin portal links (e.g. /?login=true&portal=division&division=western&email=...)
+  const [loginEmailParam, setLoginEmailParam] = useState<string>('');
 
   // Real-time table calls state
   const [waiterCalls, setWaiterCalls] = useState<WaiterRequest[]>([
@@ -115,7 +117,12 @@ export default function App() {
     const table = params.get('table');
     const tenantParam = params.get('t');
     const standaloneParam = params.get('standalone');
+    const prefillEmail = params.get('email');
+    const prefillDivision = params.get('division') || params.get('div');
     const pathname = window.location.pathname;
+
+    // Prefill LoginGate from admin portal links (?login=true&...&email=...)
+    if (prefillEmail) setLoginEmailParam(prefillEmail);
 
     // /table/N path fallback
     const tablePathMatch = pathname.match(/\/table\/(\d+)/i);
@@ -626,6 +633,7 @@ export default function App() {
     return (
       <LoginGate
         portalTarget={activeView}
+        initialEmail={loginEmailParam}
         onLoginSuccess={(user, _token, redirectUrl) => {
           setCurrentUser(user);
           credentialsService.setCurrentSessionUser(user);

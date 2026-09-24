@@ -38,10 +38,15 @@ interface AdminRecord {
   email: string;
   name: string;
   passwordHash: string;
+  /** Plain seed/demo password shown on hierarchy admin cards (display only; login is always bcrypt). */
+  demoPassword?: string;
+  /** Registered mobile number — required for the dual-channel (Email + WhatsApp) OTP reset flow. */
+  phone: string;
   role: AdminRole;
   division?: string | null;
   platformBranch?: string;
-  status: 'ACTIVE' | 'SUSPENDED' | 'PENDING';
+  allowedProvinces?: string[];
+  status: 'ACTIVE' | 'SUSPENDED' | 'PENDING' | 'PENDING_APPROVAL';
   createdAt: string;
   createdBy?: string;
 }
@@ -143,52 +148,199 @@ function canManageAdmins(actorRole: string): boolean {
   );
 }
 
-function canDeleteAdmin(actorRole: string, targetRole: string): boolean {
+// ---------------------------------------------------------------------------
+// HIERARCHY RULES (real RBAC ladder — enforced server-side)
+//  • DELETE of ANY admin/division record → SUPER_MASTER_ADMIN only.
+//  • Division add/edit → approved immediately when performed by Super Master
+//    or the owning Branch Master (DIGITAL_RACE_MASTER / TASTETRIP_MASTER);
+//    any other actor creates/edits the record as PENDING_APPROVAL.
+// ---------------------------------------------------------------------------
+
+function canDeleteAdmin(actorRole: string): boolean {
+  return (actorRole || '').toUpperCase() === 'SUPER_MASTER_ADMIN';
+}
+
+/** True when the actor may self-approve a division record for the given branch. */
+function canApproveDivision(actorRole: string, branch?: string | null): boolean {
   const a = (actorRole || '').toUpperCase();
-  const t = (targetRole || '').toUpperCase();
-  if (t === 'SUPER_MASTER_ADMIN' || t === 'SUPER_ADMIN') {
-    return a === 'SUPER_MASTER_ADMIN' || a === 'SUPER_ADMIN';
-  }
-  const actorRank = ROLE_RANK[a] ?? 0;
-  const targetRank = ROLE_RANK[t] ?? 0;
-  return actorRank > targetRank || (a === 'MASTER_ADMIN' && targetRank < 100);
+  const b = (branch || '').toUpperCase();
+  if (a === 'SUPER_MASTER_ADMIN') return true;
+  if (a === 'DIGITAL_RACE_MASTER') return b === 'DIGITAL_RACE';
+  if (a === 'TASTETRIP_MASTER') return b === 'TASTETRIP';
+  return false;
+}
+
+/** Real ISO timestamps anchored to the Asia/Colombo (UTC+05:30) seed dates. */
+function colomboISO(dateStr: string): string {
+  return new Date(`${dateStr}T09:00:00+05:30`).toISOString();
+}
+
+/** Province assignments per division (mirrors src/lib/rbacMatrix.ts SRI_LANKA_DIVISIONS). */
+const DIVISION_PROVINCES: Record<string, string[]> = {
+  UP_COUNTRY: ['CENTRAL', 'UVA', 'SABARAGAMUWA'],
+  SOUTH: ['SOUTHERN', 'EASTERN'],
+  WESTERN: ['WESTERN', 'NORTH_WESTERN'],
+  NORTH: ['NORTHERN', 'NORTH_CENTRAL'],
+};
+
+/** Normalize a Sri Lankan mobile number for registration matching. */
+function normalizePhone(raw: string): string {
+  let p = String(raw || '').replace(/[\s\-()]/g, '');
+  if (p.startsWith('00')) p = '+' + p.slice(2);
+  if (p.startsWith('0') && p.length === 10) p = '+94' + p.slice(1);
+  if (p.length === 9) p = '+94' + p;
+  return p;
+}
+
+function phonesMatch(a: string, b: string): boolean {
+  const na = normalizePhone(a);
+  const nb = normalizePhone(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  // Also accept local (9-digit) input matching the registered tail
+  return (
+    na.slice(-9) === nb.slice(-9) &&
+    (na.includes('+94') || nb.includes('+94') || na.length === 9 || nb.length === 9)
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DUAL-CHANNEL OTP RESET SESSIONS (Email OTP + WhatsApp OTP, 10-min TTL)
+// Source of truth: bcrypt adminsStore (+ credentialsService mirror).
+// ---------------------------------------------------------------------------
+interface DualOtpSession {
+  email: string;
+  adminId: string;
+  emailOtpHmac: string;
+  phoneOtpHmac: string;
+  attempts: number;
+  maxAttempts: number;
+  expiresAt: number;
+  lockedUntil?: number;
+}
+
+const dualOtpSessions = new Map<string, DualOtpSession>();
+
+function hmacOtp(otp: string): string {
+  return crypto
+    .createHmac('sha256', process.env.NEXTAUTH_SECRET || 'ceyteq-dual-otp-salt-2026')
+    .update(String(otp).trim())
+    .digest('hex');
+}
+
+/** Compare a submitted raw OTP against a stored HMAC (timing-safe). */
+function otpMatchesStoredHmac(submittedRaw: string, storedHmacHex: string): boolean {
+  const a = Buffer.from(hmacOtp(submittedRaw), 'hex');
+  const b = Buffer.from(storedHmacHex, 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function newNumericOtp(): string {
+  return crypto.randomInt(100000, 999999).toString();
 }
 
 async function seedAdminsOnBoot() {
   if (adminsStore.length > 0) return;
   const hash = async (p: string) => bcrypt.hash(p, 10);
 
+  // ------------------------------------------------------------------
+  // REAL HIERARCHY (no fake demo junk) — Asia/Colombo createdAt
+  // ------------------------------------------------------------------
+
+  // LEVEL 1 — SUPER MASTER (only role allowed to DELETE admins/divisions)
   adminsStore.push({
     id: 'adm-super-root',
     email: 'Info.ceyteq@gmail.com',
     name: 'Ceyteq Root Super Master Admin',
     passwordHash: await hash('admin@ceyteq2026'),
+    demoPassword: 'admin@ceyteq2026',
+    phone: '+94768607143',
     role: 'SUPER_MASTER_ADMIN',
     division: null,
     platformBranch: 'ALL',
+    allowedProvinces: [
+      'CENTRAL', 'UVA', 'SABARAGAMUWA', 'SOUTHERN', 'EASTERN',
+      'WESTERN', 'NORTH_WESTERN', 'NORTHERN', 'NORTH_CENTRAL',
+    ],
     status: 'ACTIVE',
-    createdAt: new Date().toISOString(),
+    createdAt: colomboISO('2026-01-05'),
   });
 
-  const divisions: Array<{ id: string; email: string; name: string; division: string }> = [
-    { id: 'adm-div-western', email: 'div.western.dr@ceyteq.com', name: 'Western Division Admin', division: 'WESTERN' },
-    { id: 'adm-div-north', email: 'div.north.dr@ceyteq.com', name: 'North Division Admin', division: 'NORTH' },
-    { id: 'adm-div-south', email: 'div.south.dr@ceyteq.com', name: 'South Division Admin', division: 'SOUTH' },
-    { id: 'adm-div-upcountry', email: 'div.upcountry.dr@ceyteq.com', name: 'Upcountry Division Admin', division: 'UP_COUNTRY' },
+  // LEVEL 2A — DIGITAL RACE MASTER
+  adminsStore.push({
+    id: 'adm-dr-master',
+    email: 'digitalrace.master@ceyteq.com',
+    name: 'Digital Race Master Admin',
+    passwordHash: await hash('DigitalRace@2026!'),
+    demoPassword: 'DigitalRace@2026!',
+    phone: '+94771110001',
+    role: 'DIGITAL_RACE_MASTER',
+    division: null,
+    platformBranch: 'DIGITAL_RACE',
+    allowedProvinces: [
+      'CENTRAL', 'UVA', 'SABARAGAMUWA', 'SOUTHERN', 'EASTERN',
+      'WESTERN', 'NORTH_WESTERN', 'NORTHERN', 'NORTH_CENTRAL',
+    ],
+    status: 'ACTIVE',
+    createdAt: colomboISO('2026-01-15'),
+    createdBy: 'adm-super-root',
+  });
+
+  // LEVEL 2B — TASTETRIP MASTER
+  adminsStore.push({
+    id: 'adm-tt-master',
+    email: 'tastetrip.master@ceyteq.com',
+    name: 'TasteTrip Delivery Master Admin',
+    passwordHash: await hash('TasteTrip@2026!'),
+    demoPassword: 'TasteTrip@2026!',
+    phone: '+94771110002',
+    role: 'TASTETRIP_MASTER',
+    division: null,
+    platformBranch: 'TASTETRIP',
+    allowedProvinces: [
+      'CENTRAL', 'UVA', 'SABARAGAMUWA', 'SOUTHERN', 'EASTERN',
+      'WESTERN', 'NORTH_WESTERN', 'NORTHERN', 'NORTH_CENTRAL',
+    ],
+    status: 'ACTIVE',
+    createdAt: colomboISO('2026-01-15'),
+    createdBy: 'adm-super-root',
+  });
+
+  // LEVEL 3 — 4 DR + 4 TT Division Admins (provinces per rbacMatrix)
+  const divisionDefs: Array<{
+    slug: string;
+    division: string;
+    name: string;
+    branch: 'DIGITAL_RACE' | 'TASTETRIP';
+    branchSuffix: 'dr' | 'tt';
+    phone: string;
+    created: string;
+  }> = [
+    { slug: 'upcountry', division: 'UP_COUNTRY', name: 'Up Country Division Admin', branch: 'DIGITAL_RACE', branchSuffix: 'dr', phone: '+94772220001', created: '2026-02-01' },
+    { slug: 'south',     division: 'SOUTH',      name: 'South Division Admin',      branch: 'DIGITAL_RACE', branchSuffix: 'dr', phone: '+94772220002', created: '2026-02-01' },
+    { slug: 'western',   division: 'WESTERN',    name: 'Western Division Admin',    branch: 'DIGITAL_RACE', branchSuffix: 'dr', phone: '+94772220003', created: '2026-02-01' },
+    { slug: 'north',     division: 'NORTH',      name: 'North Division Admin',      branch: 'DIGITAL_RACE', branchSuffix: 'dr', phone: '+94772220004', created: '2026-02-01' },
+    { slug: 'upcountry', division: 'UP_COUNTRY', name: 'Up Country Division Admin (TasteTrip)', branch: 'TASTETRIP', branchSuffix: 'tt', phone: '+94773330001', created: '2026-02-10' },
+    { slug: 'south',     division: 'SOUTH',      name: 'South Division Admin (TasteTrip)',      branch: 'TASTETRIP', branchSuffix: 'tt', phone: '+94773330002', created: '2026-02-10' },
+    { slug: 'western',   division: 'WESTERN',    name: 'Western Division Admin (TasteTrip)',    branch: 'TASTETRIP', branchSuffix: 'tt', phone: '+94773330003', created: '2026-02-10' },
+    { slug: 'north',     division: 'NORTH',      name: 'North Division Admin (TasteTrip)',      branch: 'TASTETRIP', branchSuffix: 'tt', phone: '+94773330004', created: '2026-02-10' },
   ];
 
-  for (const d of divisions) {
+  for (const d of divisionDefs) {
     adminsStore.push({
-      id: d.id,
-      email: d.email,
+      id: `adm-${d.branchSuffix}-div-${d.slug}`,
+      email: `div.${d.slug}.${d.branchSuffix}@ceyteq.com`,
       name: d.name,
       passwordHash: await hash('admin2026!'),
+      demoPassword: 'admin2026!',
+      phone: d.phone,
       role: 'DIVISION_ADMIN',
       division: d.division,
-      platformBranch: 'DIGITAL_RACE',
+      platformBranch: d.branch,
+      allowedProvinces: DIVISION_PROVINCES[d.division] || [],
       status: 'ACTIVE',
-      createdAt: new Date().toISOString(),
-      createdBy: 'adm-super-root',
+      createdAt: colomboISO(d.created),
+      createdBy: d.branch === 'DIGITAL_RACE' ? 'adm-dr-master' : 'adm-tt-master',
     });
   }
 
@@ -196,13 +348,16 @@ async function seedAdminsOnBoot() {
   try {
     const creds = credentialsService.getCredentials();
     creds.superAdminEmail = 'Info.ceyteq@gmail.com';
+    creds.superAdminPhone = '+94768607143';
     creds.superAdminPassword = 'admin@ceyteq2026';
-    for (const d of divisions) {
-      const existing = creds.enterpriseAdmins.find((a) => a.email.toLowerCase() === d.email.toLowerCase());
+    for (const a of adminsStore) {
+      if (a.role === 'SUPER_MASTER_ADMIN') continue;
+      const existing = creds.enterpriseAdmins.find((x) => x.email.toLowerCase() === a.email.toLowerCase());
       if (existing) {
-        existing.password = 'admin2026!';
+        existing.password = a.demoPassword || 'admin2026!';
+        existing.phone = a.phone;
         existing.status = 'ACTIVE';
-        existing.division = d.division as any;
+        existing.division = (a.division as any) || existing.division;
       }
     }
     credentialsService.saveCredentials(creds);
@@ -1002,6 +1157,13 @@ async function startServer() {
     // 0. Server-side adminsStore (bcrypt-hashed, RBAC source of truth)
     const storeAdmin = adminsStore.find((a) => a.email.toLowerCase() === normalizedEmail);
     if (storeAdmin) {
+      if (storeAdmin.status === 'PENDING_APPROVAL') {
+        res.status(403).json({
+          error: 'Account is pending approval by the Super Master / Branch Master. Log in once your Division account is approved.',
+          code: 'ERR_PENDING_APPROVAL',
+        });
+        return;
+      }
       if (storeAdmin.status !== 'ACTIVE') {
         res.status(403).json({
           error: `Account is currently ${storeAdmin.status}.`,
@@ -1010,12 +1172,7 @@ async function startServer() {
         return;
       }
       const isMatch = await bcrypt.compare(password, storeAdmin.passwordHash).catch(() => false);
-      // Also accept plain seed passwords during demo
-      const plainOk =
-        !isMatch &&
-        ((storeAdmin.role === 'SUPER_MASTER_ADMIN' && password === 'admin@ceyteq2026') ||
-          password === 'admin2026!');
-      if (!isMatch && !plainOk) {
+      if (!isMatch) {
         res.status(401).json({ error: 'Invalid credentials', code: 'ERR_INVALID_CREDENTIALS' });
         return;
       }
@@ -1025,7 +1182,11 @@ async function startServer() {
           ? `/dashboard/division/${(storeAdmin.division || 'WESTERN').toLowerCase()}`
           : storeAdmin.role === 'FRONT'
             ? '/dashboard/restaurant'
-            : '/dashboard/super';
+            : storeAdmin.role === 'TASTETRIP_MASTER'
+              ? '/dashboard/tastetrip'
+              : storeAdmin.role === 'DIGITAL_RACE_MASTER'
+                ? '/dashboard/digital-race'
+                : '/dashboard/super';
 
       const token = 'jwt_token_' + Buffer.from(JSON.stringify({
         sub: storeAdmin.id,
@@ -1044,9 +1205,11 @@ async function startServer() {
           id: storeAdmin.id,
           email: storeAdmin.email,
           name: storeAdmin.name,
+          phone: storeAdmin.phone,
           role: storeAdmin.role,
           branch: storeAdmin.platformBranch || 'ALL',
           divisionId: storeAdmin.division || null,
+          allowedProvinces: storeAdmin.allowedProvinces || [],
           tenantId: null,
           status: storeAdmin.status,
           tier: 'PRO',
@@ -1361,7 +1524,8 @@ async function startServer() {
   // ==========================================
   // DUAL-CHANNEL VERIFICATION PASSWORD RESET
   // Email OTP (Resend) + Phone OTP (WhatsApp Cloud API)
-  // Upstash Rate-Limited (5 req/min, 3 failed attempts lockout)
+  // Source of truth: bcrypt adminsStore + credentialsService mirror.
+  // 3 failed verify attempts → 15-min lockout.
   // ==========================================
 
   app.post('/api/auth/reset-password/request', (req: Request, res: Response) => {
@@ -1376,14 +1540,47 @@ async function startServer() {
       return;
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
-    const user = usersDatabase.get(normalizedEmail);
+    const normalizedEmail = String(email).toLowerCase().trim();
+    const admin = adminsStore.find((a) => a.email.toLowerCase() === normalizedEmail);
 
-    // Rate Limiting & Account Lockout Check
-    if (user?.lockoutUntil && user.lockoutUntil > Date.now()) {
-      const waitSec = Math.ceil((user.lockoutUntil - Date.now()) / 1000);
+    if (!admin) {
+      res.status(404).json({
+        error: 'No admin account found for this email address.',
+        code: 'ERR_ACCOUNT_NOT_FOUND',
+      });
+      return;
+    }
+
+    if (admin.status === 'SUSPENDED') {
+      res.status(403).json({
+        error: 'This account is suspended. Password reset is prohibited.',
+        code: 'ERR_ACCOUNT_SUSPENDED',
+      });
+      return;
+    }
+
+    // Registered-phone match check (dual channel requires the REAL registered number)
+    if (!phonesMatch(String(phone), admin.phone)) {
+      securityAuditLogs.unshift({
+        id: `dual-otp-mismatch-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        eventType: 'DUAL_OTP_PHONE_MISMATCH',
+        severity: 'MEDIUM',
+        ipAddress: ip,
+        details: `Password reset blocked for ${normalizedEmail}: submitted phone does not match the registered number.`,
+      });
+      res.status(400).json({
+        error: 'The mobile phone number does not match the number registered on this account.',
+        code: 'ERR_PHONE_MISMATCH',
+      });
+      return;
+    }
+
+    const existing = dualOtpSessions.get(normalizedEmail);
+    if (existing?.lockedUntil && existing.lockedUntil > Date.now()) {
+      const waitSec = Math.ceil((existing.lockedUntil - Date.now()) / 1000);
       res.status(423).json({
-        error: `Account locked due to 3 failed OTP attempts. Try again in ${Math.ceil(waitSec / 60)} minutes.`,
+        error: `Account locked due to repeated failed OTP attempts. Try again in ${Math.ceil(waitSec / 60)} minutes.`,
         code: 'ERR_ACCOUNT_LOCKED',
         remainingSeconds: waitSec,
       });
@@ -1391,13 +1588,20 @@ async function startServer() {
     }
 
     // Generate two distinct 6-digit cryptographic tokens (10-minute validity)
-    const emailOtp = (Math.floor(100000 + Math.random() * 900000)).toString();
-    const phoneOtp = (Math.floor(100000 + Math.random() * 900000)).toString();
+    let emailOtp = newNumericOtp();
+    let phoneOtp = newNumericOtp();
+    while (phoneOtp === emailOtp) phoneOtp = newNumericOtp();
     const expiresAt = Date.now() + 10 * 60 * 1000;
 
-    if (user) {
-      user.pendingDualOtp = { emailOtp, phoneOtp, expiresAt };
-    }
+    dualOtpSessions.set(normalizedEmail, {
+      email: normalizedEmail,
+      adminId: admin.id,
+      emailOtpHmac: hmacOtp(emailOtp),
+      phoneOtpHmac: hmacOtp(phoneOtp),
+      attempts: 0,
+      maxAttempts: 3,
+      expiresAt,
+    });
 
     securityAuditLogs.unshift({
       id: `dual-otp-${Date.now()}`,
@@ -1405,10 +1609,10 @@ async function startServer() {
       eventType: 'DUAL_OTP_DISPATCHED',
       severity: 'MEDIUM',
       ipAddress: ip,
-      details: `Zero-Trust Dual-Channel OTP dispatched for ${normalizedEmail}. Email OTP: ${emailOtp.substring(0, 2)}****, Phone OTP: ${phoneOtp.substring(0, 2)}****.`,
+      details: `Zero-Trust Dual-Channel OTP dispatched for ${normalizedEmail} (${admin.role}). Email OTP: ${emailOtp.substring(0, 2)}****, Phone OTP: ${phoneOtp.substring(0, 2)}****.`,
     });
 
-    console.log(`🔑 [DUAL-OTP DISPATCH] ${normalizedEmail} | ${phone}`);
+    console.log(`🔑 [DUAL-OTP DISPATCH] ${normalizedEmail} | ${normalizePhone(String(phone))}`);
     console.log(`   - Email OTP (Resend):   ${emailOtp}`);
     console.log(`   - Phone OTP (WhatsApp): ${phoneOtp}`);
 
@@ -1422,7 +1626,7 @@ async function startServer() {
           expiresInMinutes: 10,
         },
         phone: {
-          destination: phone.slice(0, 4) + '****' + phone.slice(-3),
+          destination: normalizePhone(String(phone)).slice(0, 4) + '****' + normalizePhone(String(phone)).slice(-3),
           provider: process.env.WHATSAPP_CLOUD_API_TOKEN ? 'Meta WhatsApp Cloud API (Live)' : 'Meta WhatsApp Cloud API (Sandbox)',
           expiresInMinutes: 10,
         },
@@ -1436,8 +1640,8 @@ async function startServer() {
     });
   });
 
-  app.post('/api/auth/reset-password/verify', (req: Request, res: Response) => {
-    const { email, phone, emailOtp, phoneOtp, newPassword } = req.body;
+  app.post('/api/auth/reset-password/verify', async (req: Request, res: Response) => {
+    const { email, emailOtp, phoneOtp, newPassword } = req.body;
     const ip = req.ip || '127.0.0.1';
 
     if (!email || !emailOtp || !phoneOtp || !newPassword) {
@@ -1448,17 +1652,35 @@ async function startServer() {
       return;
     }
 
-    const normalizedEmail = email.toLowerCase().trim();
-    const user = usersDatabase.get(normalizedEmail);
-
-    if (!user) {
-      res.status(404).json({ error: 'User record not found.' });
+    if (String(newPassword).length < 8) {
+      res.status(400).json({
+        error: 'New password must be at least 8 characters long.',
+        code: 'ERR_WEAK_PASSWORD',
+      });
       return;
     }
 
-    // Check Lockout
-    if (user.lockoutUntil && user.lockoutUntil > Date.now()) {
-      const waitSec = Math.ceil((user.lockoutUntil - Date.now()) / 1000);
+    const normalizedEmail = String(email).toLowerCase().trim();
+    const admin = adminsStore.find((a) => a.email.toLowerCase() === normalizedEmail);
+
+    if (!admin) {
+      res.status(404).json({ error: 'Admin record not found.', code: 'ERR_ACCOUNT_NOT_FOUND' });
+      return;
+    }
+
+    const session = dualOtpSessions.get(normalizedEmail);
+    const now = Date.now();
+
+    if (!session) {
+      res.status(400).json({
+        error: 'No active verification session. Request a new dual-channel OTP first.',
+        code: 'ERR_OTP_SESSION_NOT_FOUND',
+      });
+      return;
+    }
+
+    if (session.lockedUntil && session.lockedUntil > now) {
+      const waitSec = Math.ceil((session.lockedUntil - now) / 1000);
       res.status(423).json({
         error: `Account locked. Try again in ${Math.ceil(waitSec / 60)} minutes.`,
         code: 'ERR_ACCOUNT_LOCKED',
@@ -1467,31 +1689,32 @@ async function startServer() {
       return;
     }
 
-    // Validate both OTPs
-    const pending = user.pendingDualOtp;
-    const now = Date.now();
-    const isMasterRoot = normalizedEmail === 'info.ceyteq@gmail.com';
-
-    let valid = false;
-    if (pending && now < pending.expiresAt) {
-      valid = pending.emailOtp.trim() === emailOtp.trim() && pending.phoneOtp.trim() === phoneOtp.trim();
-    } else if (isMasterRoot && (emailOtp === '202601' || emailOtp.length === 6) && (phoneOtp === '202602' || phoneOtp.length === 6)) {
-      valid = true;
+    if (now > session.expiresAt) {
+      dualOtpSessions.delete(normalizedEmail);
+      res.status(400).json({
+        error: 'Verification codes have expired (10-minute limit). Request a new dual-channel OTP.',
+        code: 'ERR_OTP_EXPIRED',
+      });
+      return;
     }
 
-    if (!valid) {
-      user.failedAttempts = (user.failedAttempts || 0) + 1;
-      const attemptsLeft = Math.max(0, 3 - user.failedAttempts);
+    const valid =
+      otpMatchesStoredHmac(String(emailOtp), session.emailOtpHmac) &&
+      otpMatchesStoredHmac(String(phoneOtp), session.phoneOtpHmac);
 
-      if (user.failedAttempts >= 3) {
-        user.lockoutUntil = Date.now() + 15 * 60 * 1000;
+    if (!valid) {
+      session.attempts += 1;
+      const attemptsLeft = Math.max(0, session.maxAttempts - session.attempts);
+
+      if (session.attempts >= session.maxAttempts) {
+        session.lockedUntil = now + 15 * 60 * 1000;
         securityAuditLogs.unshift({
           id: `lockout-${Date.now()}`,
           timestamp: new Date().toISOString(),
           eventType: 'BRUTE_FORCE_LOCKOUT',
           severity: 'HIGH',
           ipAddress: ip,
-          details: `Account ${user.email} locked out for 15 minutes after 3 failed Dual-OTP attempts.`,
+          details: `Account ${admin.email} locked out for 15 minutes after 3 failed Dual-OTP attempts.`,
         });
 
         res.status(423).json({
@@ -1510,11 +1733,16 @@ async function startServer() {
       return;
     }
 
-    // Success: Commit new password & reset lockout counters
-    user.failedAttempts = 0;
-    user.lockoutUntil = undefined;
-    user.pendingDualOtp = undefined;
-    user.passwordHash = hashPassword(newPassword, user.salt);
+    // Success: commit new bcrypt hash to adminsStore + mirror into credentialsService
+    admin.passwordHash = await bcrypt.hash(String(newPassword), 10);
+    admin.demoPassword = undefined; // seed password no longer known/valid for display
+    dualOtpSessions.delete(normalizedEmail);
+
+    try {
+      credentialsService.resetPasswordByEmail(normalizedEmail, String(newPassword));
+    } catch {
+      // in-memory adminsStore is source of truth; mirror is best-effort
+    }
 
     securityAuditLogs.unshift({
       id: `pwd-reset-${Date.now()}`,
@@ -1522,20 +1750,20 @@ async function startServer() {
       eventType: 'PASSWORD_RESET_SUCCESS',
       severity: 'LOW',
       ipAddress: ip,
-      details: `Password securely updated for ${user.email} via Dual-Channel Verification. All sessions purged.`,
+      details: `Password securely updated (bcrypt) for ${admin.email} [${admin.role}] via Dual-Channel Email+WhatsApp Verification.`,
     });
 
-    console.log(`✅ [PASSWORD RESET COMMITTED] User ${user.email} password updated.`);
+    console.log(`✅ [PASSWORD RESET COMMITTED] Admin ${admin.email} bcrypt hash updated.`);
 
     res.json({
       success: true,
       message: 'Password successfully updated! All prior sessions have been invalidated.',
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        tier: user.tier,
+        id: admin.id,
+        email: admin.email,
+        name: admin.name,
+        role: admin.role,
+        tier: 'PRO',
       },
     });
   });
@@ -1985,9 +2213,12 @@ async function startServer() {
         id: a.id,
         email: a.email,
         name: a.name,
+        phone: a.phone,
+        password: a.demoPassword || null,
         role: a.role,
         division: a.division || null,
         platformBranch: a.platformBranch || null,
+        allowedProvinces: a.allowedProvinces || [],
         status: a.status,
         createdAt: a.createdAt,
         createdBy: a.createdBy || null,
@@ -2005,7 +2236,7 @@ async function startServer() {
       return;
     }
 
-    const { email, name, password, role, division, platformBranch } = req.body || {};
+    const { email, name, password, role, division, platformBranch, phone } = req.body || {};
     if (!email || !password || !role) {
       res.status(400).json({ success: false, error: 'email, password, and role are required' });
       return;
@@ -2057,15 +2288,29 @@ async function startServer() {
     }
 
     const passwordHash = await bcrypt.hash(String(password), 10);
+
+    // HIERARCHY RULE: adding a Division account requires approval by the Super
+    // Master or the owning Branch Master. Any other actor may request the
+    // account, but it lands as PENDING_APPROVAL until an approver signs off.
+    const isDivisionAccount = newRole === 'DIVISION_ADMIN';
+    const branchValue = platformBranch ? String(platformBranch).toUpperCase() : 'DIGITAL_RACE';
+    const requiresApproval = isDivisionAccount;
+    const approverOk = requiresApproval && canApproveDivision(actorRole, branchValue);
+    const initialStatus: AdminRecord['status'] =
+      requiresApproval && !approverOk ? 'PENDING_APPROVAL' : 'ACTIVE';
+
     const record: AdminRecord = {
       id: `adm-${Date.now()}`,
       email: normalized,
       name: name ? String(name) : normalized.split('@')[0],
       passwordHash,
+      demoPassword: String(password),
+      phone: phone ? normalizePhone(String(phone)) : '',
       role: newRole,
       division: assignedDivision,
-      platformBranch: platformBranch ? String(platformBranch) : 'DIGITAL_RACE',
-      status: 'ACTIVE',
+      platformBranch: branchValue,
+      allowedProvinces: assignedDivision ? DIVISION_PROVINCES[assignedDivision] || [] : [],
+      status: initialStatus,
       createdAt: new Date().toISOString(),
       createdBy: session?.sub || session?.email || actorRole,
     };
@@ -2078,20 +2323,20 @@ async function startServer() {
           id: record.id,
           name: record.name,
           email: record.email,
-          phone: '+94770000000',
+          phone: record.phone || '+94770000000',
           password: String(password),
           role: (newRole === 'DIVISION_ADMIN' ? 'DIVISION_ADMIN' : newRole) as any,
           platformBranch: (record.platformBranch as any) || 'DIGITAL_RACE',
           division: (assignedDivision as any) || undefined,
-          allowedProvinces: [],
+          allowedProvinces: (record.allowedProvinces || []) as any,
           permissions: {
             canProvisionTenants: true,
             canResetCredentials: true,
-            canManageFleet: false,
+            canManageFleet: record.platformBranch === 'TASTETRIP',
             canConfigureAddons: false,
             canAccessGlobalConfig: false,
           },
-          status: 'ACTIVE',
+          status: initialStatus === 'PENDING_APPROVAL' ? 'PENDING_APPROVAL' : 'ACTIVE',
           createdAt: record.createdAt,
         });
       }
@@ -2101,12 +2346,20 @@ async function startServer() {
 
     res.status(201).json({
       success: true,
+      pendingApproval: record.status === 'PENDING_APPROVAL',
+      approvalNote:
+        record.status === 'PENDING_APPROVAL'
+          ? 'Division account created as PENDING_APPROVAL — Super Master or Branch Master must approve it.'
+          : undefined,
       admin: {
         id: record.id,
         email: record.email,
         name: record.name,
+        phone: record.phone || null,
+        password: record.demoPassword || null,
         role: record.role,
         division: record.division,
+        platformBranch: record.platformBranch,
         status: record.status,
         createdAt: record.createdAt,
       },
@@ -2134,16 +2387,100 @@ async function startServer() {
       return;
     }
 
-    const { name, password, role, division, status } = req.body || {};
+    const { name, password, role, division, status, phone } = req.body || {};
     if (name) target.name = String(name);
-    if (status) target.status = String(status).toUpperCase() as AdminRecord['status'];
-    if (division !== undefined) target.division = division ? String(division).toUpperCase() : null;
+    if (phone) target.phone = normalizePhone(String(phone));
+    if (division !== undefined) {
+      target.division = division ? String(division).toUpperCase() : null;
+      target.allowedProvinces = target.division ? DIVISION_PROVINCES[target.division] || [] : target.allowedProvinces;
+    }
     if (role && (actorRole === 'SUPER_MASTER_ADMIN' || actorRole === 'MASTER_ADMIN' || actorRole === 'SUPER_ADMIN')) {
       target.role = String(role).toUpperCase() as AdminRole;
     }
     if (password) {
       target.passwordHash = await bcrypt.hash(String(password), 10);
+      target.demoPassword = String(password);
+      try {
+        credentialsService.resetPasswordByEmail(target.email, String(password));
+      } catch {
+        // in-memory store is source of truth
+      }
     }
+
+    // HIERARCHY RULE: editing a Division account requires Super Master or
+    // Branch Master approval. Approved actor → ACTIVE; any other actor's edit
+    // flips the account back to PENDING_APPROVAL.
+    const isDivisionAccount = target.role === 'DIVISION_ADMIN';
+    if (isDivisionAccount) {
+      if (canApproveDivision(actorRole, target.platformBranch)) {
+        if (status) target.status = String(status).toUpperCase() as AdminRecord['status'];
+        else target.status = 'ACTIVE';
+      } else {
+        target.status = 'PENDING_APPROVAL';
+      }
+    } else if (status && actorRole === 'SUPER_MASTER_ADMIN') {
+      target.status = String(status).toUpperCase() as AdminRecord['status'];
+    }
+
+    res.json({
+      success: true,
+      pendingApproval: target.status === 'PENDING_APPROVAL',
+      admin: {
+        id: target.id,
+        email: target.email,
+        name: target.name,
+        phone: target.phone,
+        role: target.role,
+        division: target.division,
+        platformBranch: target.platformBranch,
+        status: target.status,
+      },
+    });
+  });
+
+  // Explicit approval action — Super Master or the owning Branch Master only
+  app.post('/api/admins/:id/approve', (req: Request, res: Response) => {
+    const session = parseSessionToken(req);
+    const roleHeader = (req.headers['x-client-role'] as string) || session?.role || '';
+    const actorRole = roleHeader.toUpperCase();
+
+    const isApproverType =
+      actorRole === 'SUPER_MASTER_ADMIN' ||
+      actorRole === 'DIGITAL_RACE_MASTER' ||
+      actorRole === 'TASTETRIP_MASTER';
+    if (!isApproverType) {
+      res.status(403).json({
+        success: false,
+        error: 'Only the Super Master or a Branch Master can approve division accounts.',
+        code: 'ERR_APPROVAL_FORBIDDEN',
+      });
+      return;
+    }
+
+    const id = String(req.params.id);
+    const target = adminsStore.find((a) => a.id === id);
+    if (!target) {
+      res.status(404).json({ success: false, error: 'Admin not found' });
+      return;
+    }
+    if (!canApproveDivision(actorRole, target.platformBranch)) {
+      res.status(403).json({
+        success: false,
+        error: `Branch Masters may only approve accounts inside their own platform (${target.platformBranch}).`,
+        code: 'ERR_APPROVAL_BRANCH_MISMATCH',
+      });
+      return;
+    }
+
+    target.status = 'ACTIVE';
+    securityAuditLogs.unshift({
+      id: `approve-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      eventType: 'ADMIN_APPROVED',
+      severity: 'LOW',
+      ipAddress: req.ip || '127.0.0.1',
+      details: `${actorRole} approved division account ${target.email} [${target.role}] (${target.platformBranch}).`,
+    });
 
     res.json({
       success: true,
@@ -2153,17 +2490,24 @@ async function startServer() {
         name: target.name,
         role: target.role,
         division: target.division,
+        platformBranch: target.platformBranch,
         status: target.status,
       },
     });
   });
 
+  // HIERARCHY RULE: DELETE of any admin/division record → SUPER_MASTER_ADMIN only
   app.delete('/api/admins/:id', (req: Request, res: Response) => {
     const session = parseSessionToken(req);
     const roleHeader = (req.headers['x-client-role'] as string) || session?.role || '';
     const actorRole = roleHeader.toUpperCase();
-    if (!canManageAdmins(actorRole)) {
-      res.status(403).json({ success: false, error: 'Forbidden: cannot delete admins' });
+
+    if (actorRole !== 'SUPER_MASTER_ADMIN') {
+      res.status(403).json({
+        success: false,
+        error: 'Deleting admins or divisions is reserved for the Super Master Admin.',
+        code: 'ERR_DELETE_SUPER_MASTER_ONLY',
+      });
       return;
     }
 
@@ -2174,21 +2518,27 @@ async function startServer() {
       return;
     }
     const target = adminsStore[idx];
-    if (!canDeleteAdmin(actorRole, target.role)) {
-      res.status(403).json({
-        success: false,
-        error: 'Insufficient privileges to delete this admin',
-        code: 'ERR_RBAC_DELETE',
-      });
+    if (!canDeleteAdmin(actorRole)) {
+      res.status(403).json({ success: false, error: 'Forbidden', code: 'ERR_DELETE_SUPER_MASTER_ONLY' });
       return;
     }
 
     adminsStore.splice(idx, 1);
+    dualOtpSessions.delete(target.email.toLowerCase());
     try {
       credentialsService.deleteEnterpriseAdmin(id);
     } catch {
       // ignore
     }
+    securityAuditLogs.unshift({
+      id: `del-admin-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      eventType: 'ADMIN_DELETED',
+      severity: 'MEDIUM',
+      ipAddress: req.ip || '127.0.0.1',
+      details: `SUPER_MASTER_ADMIN deleted admin ${target.email} [${target.role}] (${target.division || 'GLOBAL'}).`,
+    });
+
     res.json({ success: true, deleted: id });
   });
 
