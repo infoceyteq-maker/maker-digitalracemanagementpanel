@@ -1,5 +1,24 @@
 import { UserRole, SubscriptionTier } from '../types';
 
+/**
+ * Digital Race RBAC hierarchy (authoritative role names).
+ * Concrete UserRole union lives in src/types.ts; this documents the admin ladder:
+ *
+ * SUPER_MASTER_ADMIN — full control; create/delete every admin & division
+ * MASTER_ADMIN       — everything except deleting SUPER_MASTER_ADMIN
+ * AGENCY_ADMIN       — manages DIVISION_ADMINs + tenants in assigned divisions
+ * DIVISION_ADMIN     — own division's tenants + orders; can edit menus
+ * FRONT              — restaurant staff; menu edit w/ approval; no admin mgmt
+ * CUSTOMER           — public QR menu only
+ */
+export type RbacAdminRole =
+  | 'SUPER_MASTER_ADMIN'
+  | 'MASTER_ADMIN'
+  | 'AGENCY_ADMIN'
+  | 'DIVISION_ADMIN'
+  | 'FRONT'
+  | 'CUSTOMER';
+
 export type AccountStatus = 'PENDING_VERIFICATION' | 'ACTIVE' | 'SUSPENDED' | 'LOCKED_BRUTE_FORCE';
 
 export interface AuthUser {

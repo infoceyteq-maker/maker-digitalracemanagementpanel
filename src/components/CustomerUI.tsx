@@ -147,7 +147,7 @@ export const CustomerUI: React.FC<CustomerUIProps> = ({
   const cartItemCount = cart.reduce((acc, item) => acc + item.quantity, 0);
   const cartSubtotal = cart.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
   const deliveryFee = orderMode === 'DELIVERY' ? 350 : 0;
-  const tax = Math.round(cartSubtotal * 0.1); // 10% service/tax
+  const tax = Math.round(cartSubtotal * 0.05); // 5% service tax (matches server)
   const cartGrandTotal = cartSubtotal + deliveryFee + tax;
 
   const handleCheckoutSubmit = (e: React.FormEvent) => {

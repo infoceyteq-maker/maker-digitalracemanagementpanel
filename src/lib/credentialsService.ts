@@ -15,7 +15,7 @@ export interface EnterpriseAdminRecord {
   email: string;
   phone: string;
   password: string;
-  role: 'SUPER_MASTER_ADMIN' | 'DIGITAL_RACE_MASTER' | 'TASTETRIP_MASTER' | 'DIVISION_ADMIN';
+  role: 'SUPER_MASTER_ADMIN' | 'MASTER_ADMIN' | 'AGENCY_ADMIN' | 'DIGITAL_RACE_MASTER' | 'TASTETRIP_MASTER' | 'DIVISION_ADMIN' | 'FRONT' | 'CUSTOMER';
   platformBranch: PlatformBranch;
   division?: DivisionId;
   allowedProvinces: SriLankanProvince[];
@@ -49,7 +49,7 @@ export interface RoleCredentials {
   >;
 }
 
-const STORAGE_KEY = 'ceyteq_credentials_v4';
+const STORAGE_KEY = 'ceyteq_credentials_v5';
 
 export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
   // --------------------------------------------------------------------------
@@ -126,7 +126,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
     name: 'Up Country Division Admin (Digital Race)',
     email: 'div.upcountry.dr@ceyteq.com',
     phone: '+94772220001',
-    password: 'UpCountry@DR2026!',
+    password: 'admin2026!',
     role: 'DIVISION_ADMIN',
     platformBranch: 'DIGITAL_RACE',
     division: 'UP_COUNTRY',
@@ -146,7 +146,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
     name: 'South Division Admin (Digital Race)',
     email: 'div.south.dr@ceyteq.com',
     phone: '+94772220002',
-    password: 'South@DR2026!',
+    password: 'admin2026!',
     role: 'DIVISION_ADMIN',
     platformBranch: 'DIGITAL_RACE',
     division: 'SOUTH',
@@ -166,7 +166,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
     name: 'Western Division Admin (Digital Race)',
     email: 'div.western.dr@ceyteq.com',
     phone: '+94772220003',
-    password: 'Western@DR2026!',
+    password: 'admin2026!',
     role: 'DIVISION_ADMIN',
     platformBranch: 'DIGITAL_RACE',
     division: 'WESTERN',
@@ -186,7 +186,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
     name: 'North Division Admin (Digital Race)',
     email: 'div.north.dr@ceyteq.com',
     phone: '+94772220004',
-    password: 'North@DR2026!',
+    password: 'admin2026!',
     role: 'DIVISION_ADMIN',
     platformBranch: 'DIGITAL_RACE',
     division: 'NORTH',
@@ -288,9 +288,9 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
 ];
 
 const DEFAULT_CREDENTIALS: RoleCredentials = {
-  superAdminEmail: 'info.ceyteq@gmail.com',
+  superAdminEmail: 'Info.ceyteq@gmail.com',
   superAdminPhone: '+94768607143',
-  superAdminPassword: 'CeyteqMaster@2026!',
+  superAdminPassword: 'admin@ceyteq2026',
   defaultKitchenPin: '2026',
   defaultWaiterPin: '1122',
   enterpriseAdmins: INITIAL_ENTERPRISE_ADMINS,
