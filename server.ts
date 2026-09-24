@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import crypto from 'crypto';
+import http from 'http';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
@@ -2539,10 +2540,18 @@ Instructions:
     }
   });
 
-  // Vite middleware in dev or static files in production
+  // Single HTTP server so Vite HMR websocket shares :3000.
+  // Vite middlewareMode otherwise opens a separate :24678 port that Arena
+  // preview can pick and show as plain "Upgrade Required" (HTTP 426).
+  const httpServer = http.createServer(app);
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: { server: httpServer },
+        allowedHosts: true,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -2554,7 +2563,7 @@ Instructions:
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Ceyteq Digital Race Server listening on http://0.0.0.0:${PORT}`);
   });
 }
