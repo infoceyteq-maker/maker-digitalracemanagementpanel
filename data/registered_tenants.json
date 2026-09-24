@@ -1,0 +1,151 @@
+[
+  {
+    "id": "cust-0001",
+    "slug": "cafe-umbrella",
+    "registeredAt": "2026-09-24T11:16:54.747125+00:00",
+    "customerNo": "CU-001",
+    "business": {
+      "name": "Cafe Umbrella",
+      "province": "Uva",
+      "district": "Badulla",
+      "city": "Ella",
+      "address": "Passara Road 3rd Mile, Ella",
+      "postalCode": "90900",
+      "phone": "+94 71 205 4801",
+      "email": "thejanlahiru44@gmail.com"
+    },
+    "owner": {
+      "name": "Lahiru Thejan Aravinda",
+      "phone": "+94 71 205 4801",
+      "email": "thejanlahiru44@gmail.com"
+    },
+    "login": {
+      "email": "thejanlahiru44@gmail.com",
+      "passwordHash": "1ef3c0cf6e556529237c5db34869730ccac9846c59ff37ab4785bdbe73b921ae",
+      "salt": "ceyteq_secure_salt_2026"
+    },
+    "branding": {
+      "logoUrl": "/brand/logo.png",
+      "coverUrl": "/brand/cover.jpg",
+      "colorCode": "#ff6a2e",
+      "locationLink": "https://share.google/cYiIixkUGF5D3pMt7"
+    },
+    "social": {
+      "facebook": "https://www.facebook.com/profile.php?id=61573828236464",
+      "instagram": "https://www.instagram.com/cafe_umbrella_",
+      "tiktok": "",
+      "youtube": "",
+      "whatsapp": "+94712054801"
+    },
+    "menu": [
+      {
+        "name": "Golden Pumpkin Velouté",
+        "category": "Soup",
+        "price": 750,
+        "description": "Silky hill-country pumpkin with coconut cream and toasted seeds.",
+        "spicy": false,
+        "vegetarian": true,
+        "imageUrl": "/menu/soup-pumpkin.jpg"
+      },
+      {
+        "name": "Clear Chicken Herb Soup",
+        "category": "Soup",
+        "price": 850,
+        "description": "Crystal-clear golden broth with chicken, glass noodles and coriander.",
+        "spicy": false,
+        "vegetarian": false,
+        "imageUrl": "/menu/soup-chicken.jpg"
+      },
+      {
+        "name": "Creamy Ceylon Chicken Stew",
+        "category": "Stews",
+        "price": 1400,
+        "description": "Velvety coconut milk stew with curry leaves and cardamom.",
+        "spicy": false,
+        "vegetarian": false,
+        "imageUrl": "/menu/stew-chicken.jpg"
+      },
+      {
+        "name": "Devilled Beef Hot Pot",
+        "category": "Stews",
+        "price": 1750,
+        "description": "Caramelised soy-glazed beef with charred peppers in cast iron.",
+        "spicy": true,
+        "vegetarian": false,
+        "imageUrl": "/menu/stew-beef.jpg"
+      },
+      {
+        "name": "Ella Mountain Chicken Curry & Rice",
+        "category": "Main Dish",
+        "price": 1650,
+        "description": "Clay-pot chicken curry over fluffy samba rice.",
+        "spicy": true,
+        "vegetarian": false,
+        "imageUrl": "/menu/main-curry.jpg"
+      },
+      {
+        "name": "Fire Wok Nasi Goreng",
+        "category": "Main Dish",
+        "price": 1500,
+        "description": "Smoky fried rice with fried egg, chicken satay and prawn crackers.",
+        "spicy": true,
+        "vegetarian": false,
+        "imageUrl": "/menu/main-nasi.jpg"
+      },
+      {
+        "name": "Umbrella Signature Chicken Roti",
+        "category": "Signature Roti",
+        "price": 850,
+        "description": "Golden paratha parcels packed with spiced chicken and potato.",
+        "spicy": true,
+        "vegetarian": false,
+        "imageUrl": "/menu/roti-signature.jpg"
+      },
+      {
+        "name": "Island Pol Roti & Lunu Miris",
+        "category": "Signature Roti",
+        "price": 450,
+        "description": "Rustic coconut flatbreads with fierce red lunu miris.",
+        "spicy": true,
+        "vegetarian": true,
+        "imageUrl": "/menu/roti-pol.jpg"
+      },
+      {
+        "name": "Umbrella Ultimate Legend Kottu",
+        "category": "Kottu Junction",
+        "price": 1900,
+        "description": "Godhamba roti chopped with chicken, egg, mushrooms and sausage.",
+        "spicy": true,
+        "vegetarian": false,
+        "imageUrl": "/menu/kottu-legend.jpg"
+      },
+      {
+        "name": "Chicken Cheese Blast Kottu",
+        "category": "Kottu Junction",
+        "price": 1550,
+        "description": "Grilled chicken and roti under molten mozzarella.",
+        "spicy": true,
+        "vegetarian": false,
+        "imageUrl": "/menu/kottu-cheese.jpg"
+      },
+      {
+        "name": "Midnight Egg & Cheese Kottu",
+        "category": "Kottu Junction",
+        "price": 1350,
+        "description": "Roti ribbons with scrambled egg and melted cheese.",
+        "spicy": true,
+        "vegetarian": false,
+        "imageUrl": "/menu/kottu-egg.jpg"
+      },
+      {
+        "name": "Ella Greens Veggie Kottu",
+        "category": "Kottu Junction",
+        "price": 1150,
+        "description": "Carrot, beans, leeks and cabbage chopped through soft roti.",
+        "spicy": true,
+        "vegetarian": true,
+        "imageUrl": "/menu/kottu-veg.jpg"
+      }
+    ]
+  }
+]

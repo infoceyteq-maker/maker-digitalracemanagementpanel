@@ -1,0 +1,29 @@
+{
+  "name": "cafe-umbrella-menu",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cafe Umbrella – Ella · Ultra-premium digital food menu (Next.js)",
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p 3000",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0 -p 3000",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fontsource-variable/manrope": "^5.2.5",
+    "@fontsource-variable/sora": "^5.2.5",
+    "framer-motion": "^12.23.0",
+    "lucide-react": "^0.546.0",
+    "next": "^15.5.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.7.0"
+  }
+}
