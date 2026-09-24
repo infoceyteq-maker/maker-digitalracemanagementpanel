@@ -26,7 +26,7 @@ export interface EnterpriseAdminRecord {
     canConfigureAddons: boolean;
     canAccessGlobalConfig: boolean;
   };
-  status: 'ACTIVE' | 'PENDING' | 'SUSPENDED';
+  status: 'ACTIVE' | 'PENDING' | 'SUSPENDED' | 'PENDING_APPROVAL';
   lastLogin?: string;
   createdAt: string;
 }
@@ -210,7 +210,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
     name: 'Up Country Division Admin (TasteTrip)',
     email: 'div.upcountry.tt@ceyteq.com',
     phone: '+94773330001',
-    password: 'UpCountry@TT2026!',
+    password: 'admin2026!',
     role: 'DIVISION_ADMIN',
     platformBranch: 'TASTETRIP',
     division: 'UP_COUNTRY',
@@ -230,7 +230,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
     name: 'South Division Admin (TasteTrip)',
     email: 'div.south.tt@ceyteq.com',
     phone: '+94773330002',
-    password: 'South@TT2026!',
+    password: 'admin2026!',
     role: 'DIVISION_ADMIN',
     platformBranch: 'TASTETRIP',
     division: 'SOUTH',
@@ -250,7 +250,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
     name: 'Western Division Admin (TasteTrip)',
     email: 'div.western.tt@ceyteq.com',
     phone: '+94773330003',
-    password: 'Western@TT2026!',
+    password: 'admin2026!',
     role: 'DIVISION_ADMIN',
     platformBranch: 'TASTETRIP',
     division: 'WESTERN',
@@ -270,7 +270,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
     name: 'North Division Admin (TasteTrip)',
     email: 'div.north.tt@ceyteq.com',
     phone: '+94773330004',
-    password: 'North@TT2026!',
+    password: 'admin2026!',
     role: 'DIVISION_ADMIN',
     platformBranch: 'TASTETRIP',
     division: 'NORTH',

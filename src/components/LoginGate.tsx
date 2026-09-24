@@ -1,22 +1,24 @@
-import React, { useState } from 'react';
-import { 
-  ShieldCheck, 
-  Lock, 
-  Mail, 
-  Eye, 
-  EyeOff, 
-  Sparkles, 
-  ArrowRight, 
-  AlertCircle, 
-  CheckCircle2, 
-  RefreshCw, 
-  Crown, 
-  Building2, 
-  Truck, 
-  MapPin, 
-  Store, 
+import React, { useState, useEffect } from 'react';
+import {
+  ShieldCheck,
+  Lock,
+  Mail,
+  Eye,
+  EyeOff,
+  Sparkles,
+  ArrowRight,
+  AlertCircle,
+  CheckCircle2,
+  RefreshCw,
+  Crown,
+  Building2,
+  Truck,
+  MapPin,
+  Store,
   KeyRound,
-  ChevronDown
+  ChevronDown,
+  MessageSquare,
+  Smartphone
 } from 'lucide-react';
 import { AuthUser } from '../types';
 import { credentialsService } from '../lib/credentialsService';
@@ -44,6 +46,121 @@ export const LoginGate: React.FC<LoginGateProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isQuickFillOpen, setIsQuickFillOpen] = useState(false);
+
+  // Inline dual-channel Forgot Password (Email OTP + registered Phone OTP)
+  const [isForgotOpen, setIsForgotOpen] = useState(false);
+  const [forgotStep, setForgotStep] = useState<'REQUEST' | 'VERIFY' | 'DONE'>('REQUEST');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotPhone, setForgotPhone] = useState('');
+  const [forgotEmailOtp, setForgotEmailOtp] = useState('');
+  const [forgotPhoneOtp, setForgotPhoneOtp] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const [forgotSimulation, setForgotSimulation] = useState<{ emailOtp: string; phoneOtp: string } | null>(null);
+
+  // Keep email field in sync when a portal link param arrives after mount
+  useEffect(() => {
+    if (initialEmail) setEmail(initialEmail);
+  }, [initialEmail]);
+
+  const openForgotPassword = () => {
+    setForgotError(null);
+    setForgotSuccess(null);
+    setForgotStep('REQUEST');
+    setForgotEmail(email.trim());
+    // Prefill the registered phone from the credentials registry when known
+    const reg = credentialsService.findAccountByEmail(email.trim());
+    if (reg.record?.phone) setForgotPhone(String(reg.record.phone));
+    setForgotSimulation(null);
+    setIsForgotOpen(true);
+  };
+
+  const handleForgotRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim() || !forgotPhone.trim()) {
+      setForgotError('Enter your corporate email and the mobile phone registered on the account.');
+      return;
+    }
+    setForgotBusy(true);
+    setForgotError(null);
+    try {
+      const res = await fetch('/api/auth/reset-password/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail.trim(), phone: forgotPhone.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 400 && data.code === 'ERR_PHONE_MISMATCH') {
+          setForgotError('ERR_PHONE_MISMATCH — that phone number is not the one registered on this account. Use the registered number to receive the WhatsApp OTP.');
+        } else if (res.status === 404) {
+          setForgotError('No admin account exists for that email address.');
+        } else {
+          setForgotError(data.error || 'Could not dispatch the dual-channel OTP. Check the email and registered phone.');
+        }
+        return;
+      }
+      // Sandbox dispatch: capture simulated codes for the verify step
+      setForgotSimulation(
+        data._simulation
+          ? { emailOtp: data._simulation.emailOtp, phoneOtp: data._simulation.phoneOtp }
+          : { emailOtp: '', phoneOtp: '' }
+      );
+      setForgotEmailOtp(data._simulation?.emailOtp || '');
+      setForgotPhoneOtp(data._simulation?.phoneOtp || '');
+      setForgotStep('VERIFY');
+      setForgotSuccess('Dual OTP dispatched: Email (Resend) + WhatsApp (registered phone).');
+    } catch {
+      setForgotError('Could not reach the auth server. Make sure the dev server is running on :3000.');
+    } finally {
+      setForgotBusy(false);
+    }
+  };
+
+  const handleForgotVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmailOtp.trim() || !forgotPhoneOtp.trim() || !forgotNewPassword) {
+      setForgotError('Enter both OTP codes and the new password.');
+      return;
+    }
+    setForgotBusy(true);
+    setForgotError(null);
+    try {
+      const res = await fetch('/api/auth/reset-password/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: forgotEmail.trim(),
+          phone: forgotPhone.trim(),
+          emailOtp: forgotEmailOtp.trim(),
+          phoneOtp: forgotPhoneOtp.trim(),
+          newPassword: forgotNewPassword,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setForgotError(data.error || 'OTP verification failed.');
+        return;
+      }
+      setForgotSuccess(`Password for ${forgotEmail.trim()} updated via dual-OTP verification. Sign in with the new password.`);
+      setForgotStep('DONE');
+    } catch {
+      setForgotError('Could not reach the auth server.');
+    } finally {
+      setForgotBusy(false);
+    }
+  };
+
+  const closeForgotAndPrefillLogin = () => {
+    setIsForgotOpen(false);
+    if (forgotStep === 'DONE') {
+      setEmail(forgotEmail.trim());
+      setPassword(forgotNewPassword);
+      setSuccessMessage('Use your new password below to sign in.');
+    }
+  };
 
   // Available test accounts from credentialsService
   const sysCreds = credentialsService.getCredentials();
@@ -247,6 +364,159 @@ export const LoginGate: React.FC<LoginGateProps> = ({
             </span>
           </div>
 
+          {/* Inline Dual-Channel Forgot Password (Email + registered Phone OTP) */}
+          {isForgotOpen && (
+            <div className="mb-6 p-4 rounded-2xl bg-slate-950/80 border border-cyan-800/40 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-cyan-400" />
+                  <span className="text-xs font-black text-white">
+                    Forgot Password? <span className="text-cyan-300 font-bold">Dual-Channel Verification</span>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeForgotAndPrefillLogin}
+                  className="text-[10px] font-bold text-slate-400 hover:text-white transition-colors"
+                >
+                  {forgotStep === 'DONE' ? 'Sign In →' : 'Close ✕'}
+                </button>
+              </div>
+
+              <p className="text-[10px] text-slate-400 leading-relaxed">
+                Enter your corporate email + the <span className="text-cyan-300 font-bold">registered mobile phone</span>.
+                A 6-digit OTP is dispatched on <span className="text-cyan-300">Email</span> and{' '}
+                <span className="text-rose-300">WhatsApp</span> — both must match to set a new password.
+              </p>
+
+              {forgotStep === 'REQUEST' && (
+                <form onSubmit={handleForgotRequest} className="space-y-2.5">
+                  <div className="relative">
+                    <Mail className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <input
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      placeholder="Corporate email"
+                      className="w-full bg-slate-900/90 border border-slate-700/80 focus:border-cyan-400 rounded-lg pl-8 pr-3 py-2 text-white placeholder-slate-500 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="relative">
+                    <Smartphone className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <input
+                      type="tel"
+                      value={forgotPhone}
+                      onChange={(e) => setForgotPhone(e.target.value)}
+                      placeholder="Registered phone (e.g. +94768607143)"
+                      className="w-full bg-slate-900/90 border border-slate-700/80 focus:border-cyan-400 rounded-lg pl-8 pr-3 py-2 text-white placeholder-slate-500 text-xs font-mono"
+                    />
+                  </div>
+                  {forgotError && (
+                    <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-[11px] flex items-start gap-2">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span>{forgotError}</span>
+                    </div>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={forgotBusy}
+                    className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black rounded-lg text-xs transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    {forgotBusy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <MessageSquare className="w-3.5 h-3.5" />}
+                    Dispatch Dual OTP (Email + WhatsApp)
+                  </button>
+                </form>
+              )}
+
+              {forgotStep === 'VERIFY' && (
+                <form onSubmit={handleForgotVerify} className="space-y-2.5">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-bold text-cyan-300 mb-1">EMAIL OTP (Resend)</label>
+                      <input
+                        value={forgotEmailOtp}
+                        onChange={(e) => setForgotEmailOtp(e.target.value)}
+                        maxLength={6}
+                        placeholder="6 digits"
+                        className="w-full bg-slate-900/90 border border-cyan-800/50 focus:border-cyan-400 rounded-lg px-3 py-2 text-white placeholder-slate-500 text-xs font-mono tracking-widest"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-rose-300 mb-1">PHONE OTP (WhatsApp)</label>
+                      <input
+                        value={forgotPhoneOtp}
+                        onChange={(e) => setForgotPhoneOtp(e.target.value)}
+                        maxLength={6}
+                        placeholder="6 digits"
+                        className="w-full bg-slate-900/90 border border-rose-800/50 focus:border-rose-400 rounded-lg px-3 py-2 text-white placeholder-slate-500 text-xs font-mono tracking-widest"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-300 mb-1">NEW PASSWORD (min 8 chars)</label>
+                    <input
+                      type="password"
+                      value={forgotNewPassword}
+                      onChange={(e) => setForgotNewPassword(e.target.value)}
+                      placeholder="••••••••••"
+                      className="w-full bg-slate-900/90 border border-slate-700/80 focus:border-cyan-400 rounded-lg px-3 py-2 text-white placeholder-slate-500 text-xs font-mono"
+                    />
+                  </div>
+                  {forgotSimulation && forgotSimulation.emailOtp && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForgotEmailOtp(forgotSimulation.emailOtp);
+                        setForgotPhoneOtp(forgotSimulation.phoneOtp);
+                      }}
+                      className="w-full py-1.5 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-600/50 text-slate-200 rounded-lg text-[10px] font-bold transition-colors"
+                    >
+                      ⚡ Auto-fill sandbox codes (Email {forgotSimulation.emailOtp} • WhatsApp {forgotSimulation.phoneOtp})
+                    </button>
+                  )}
+                  {forgotError && (
+                    <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-[11px] flex items-start gap-2">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span>{forgotError}</span>
+                    </div>
+                  )}
+                  {forgotSuccess && (
+                    <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px] flex items-start gap-2">
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span>{forgotSuccess}</span>
+                    </div>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={forgotBusy}
+                    className="w-full py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black rounded-lg text-xs transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    {forgotBusy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                    Verify OTPs & Set New Password
+                  </button>
+                </form>
+              )}
+
+              {forgotStep === 'DONE' && (
+                <div className="space-y-2.5">
+                  <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px] flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      ✅ <span className="font-bold">{forgotEmail}</span> password updated on the server (bcrypt adminsStore + credentialsService).
+                      Click “Sign In” to continue with the new password.
+                    </span>
+                  </div>
+                  <button
+                    onClick={closeForgotAndPrefillLogin}
+                    className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black rounded-lg text-xs transition-all flex items-center justify-center gap-2"
+                  >
+                    Sign In <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Error Message */}
           {errorMessage && (
             <div className="mb-5 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5 animate-in fade-in slide-in-from-top-2">
@@ -291,15 +561,13 @@ export const LoginGate: React.FC<LoginGateProps> = ({
                 <label className="block text-xs font-bold text-slate-300">
                   Password
                 </label>
-                {onOpenDualOtpReset && (
-                  <button
-                    type="button"
-                    onClick={onOpenDualOtpReset}
-                    className="text-[11px] text-cyan-400 hover:text-cyan-300 font-bold transition-colors"
-                  >
-                    Forgot Password?
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={openForgotPassword}
+                  className="text-[11px] text-cyan-400 hover:text-cyan-300 font-bold transition-colors"
+                >
+                  Forgot Password?
+                </button>
               </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">

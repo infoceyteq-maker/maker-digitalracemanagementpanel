@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, 
   Crown, 
@@ -106,6 +106,122 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
   const showNotification = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3500);
+  };
+
+  // Current session identity (client-side RBAC context for which actions to show)
+  const sessionUser = credentialsService.getCurrentSessionUser() as
+    | (EnterpriseAdminRecord & { role?: string })
+    | null;
+  const currentRole = ((sessionUser as any)?.role || '').toUpperCase();
+  // HIERARCHY RULE (mirrored from server): DELETE admins/divisions = SUPER MASTER ONLY
+  const canDeleteAdmins = currentRole === 'SUPER_MASTER_ADMIN' || currentRole === 'SUPER_ADMIN';
+  const canApproveDivision =
+    currentRole === 'SUPER_MASTER_ADMIN' ||
+    currentRole === 'SUPER_ADMIN' ||
+    currentRole === 'DIGITAL_RACE_MASTER' ||
+    currentRole === 'TASTETRIP_MASTER';
+
+  // Format an ISO timestamp into the Asia/Colombo (SLST, UTC+5:30) wall-clock display
+  const formatColombo = (iso?: string) => {
+    if (!iso) return '—';
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return iso;
+      return new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Colombo',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZoneName: 'short',
+      }).format(d);
+    } catch {
+      return iso;
+    }
+  };
+
+  // Pull the authoritative admin list from the server (phones, statuses, approvals)
+  // and merge it into the local credentials registry that drives the cards.
+  const syncFromServer = async () => {
+    try {
+      const res = await fetch('/api/admins', {
+        headers: { 'x-client-role': currentRole || 'SUPER_MASTER_ADMIN' },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data?.success || !Array.isArray(data.admins)) return;
+      const local = credentialsService.getEnterpriseAdmins();
+      let touched = false;
+      for (const sa of data.admins) {
+        const match = local.find((a) => a.email.toLowerCase() === String(sa.email || '').toLowerCase());
+        if (match) {
+          const next: EnterpriseAdminRecord = {
+            ...match,
+            phone: sa.phone || match.phone,
+            status: (sa.status === 'PENDING_APPROVAL' ? 'PENDING_APPROVAL' : match.status) as EnterpriseAdminRecord['status'],
+            createdAt: sa.createdAt || match.createdAt,
+          };
+          if (JSON.stringify(next) !== JSON.stringify(match)) {
+            credentialsService.upsertEnterpriseAdmin(next);
+            touched = true;
+          }
+        }
+      }
+      if (touched) setAdmins(credentialsService.getEnterpriseAdmins());
+    } catch {
+      // offline — keep local registry
+    }
+  };
+
+  useEffect(() => {
+    void syncFromServer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // HIERARCHY RULE: DELETE of an admin/division record → SUPER_MASTER_ADMIN only
+  const handleDeleteAdmin = async (admin: EnterpriseAdminRecord) => {
+    const ok = window.confirm(
+      `DELETE ${admin.name} (${admin.email})?\n\nThis action is reserved for the Super Master Admin and cannot be undone.`
+    );
+    if (!ok) return;
+    try {
+      const res = await fetch(`/api/admins/${encodeURIComponent(admin.id)}`, {
+        method: 'DELETE',
+        headers: { 'x-client-role': currentRole || '' },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showNotification(`⛔ ${data.error || 'Delete blocked'} ${data.code ? `[${data.code}]` : ''}`);
+        return;
+      }
+      credentialsService.deleteEnterpriseAdmin(admin.id);
+      setAdmins(credentialsService.getEnterpriseAdmins());
+      showNotification(`🗑️ ${admin.name} deleted by Super Master.`);
+    } catch {
+      showNotification('⚠️ Could not reach the server — delete not applied.');
+    }
+  };
+
+  // HIERARCHY RULE: approve a PENDING_APPROVAL division account (Super/branch master)
+  const handleApproveAdmin = async (admin: EnterpriseAdminRecord) => {
+    try {
+      const res = await fetch(`/api/admins/${encodeURIComponent(admin.id)}/approve`, {
+        method: 'POST',
+        headers: { 'x-client-role': currentRole || '' },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showNotification(`⛔ ${data.error || 'Approval blocked'} ${data.code ? `[${data.code}]` : ''}`);
+        return;
+      }
+      const updated = { ...admin, status: 'ACTIVE' as EnterpriseAdminRecord['status'] };
+      credentialsService.upsertEnterpriseAdmin(updated);
+      setAdmins(credentialsService.getEnterpriseAdmins());
+      showNotification(`✅ ${admin.name} approved — status now ACTIVE.`);
+    } catch {
+      showNotification('⚠️ Could not reach the server — approval not applied.');
+    }
   };
 
   const handleGenerateInviteLink = async (admin: {
@@ -216,10 +332,18 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
     );
   };
 
-  // Save admin
+  // Save admin (local registry + server mirror with hierarchy approval rule)
   const handleSaveAdmin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formEmail || !formName || !formPassword) return;
+
+    // HIERARCHY RULE (mirrored from server): Division add/edit requires Super
+    // Master or Branch Master approval → otherwise PENDING_APPROVAL.
+    const isDivision = formRole === 'DIVISION_ADMIN';
+    const branchMatch =
+      (currentRole === 'DIGITAL_RACE_MASTER' && formBranch === 'DIGITAL_RACE') ||
+      (currentRole === 'TASTETRIP_MASTER' && formBranch === 'TASTETRIP');
+    const approvedNow = !isDivision || canApproveDivision || branchMatch;
 
     const updated: EnterpriseAdminRecord = {
       id: editingAdmin ? editingAdmin.id : `adm-${Date.now()}`,
@@ -240,14 +364,48 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
         canConfigureAddons,
         canAccessGlobalConfig,
       },
-      status: 'ACTIVE',
+      status: approvedNow ? 'ACTIVE' : 'PENDING_APPROVAL',
       createdAt: editingAdmin ? editingAdmin.createdAt : new Date().toISOString(),
     };
 
     credentialsService.upsertEnterpriseAdmin(updated);
     setAdmins(credentialsService.getEnterpriseAdmins());
     setIsModalOpen(false);
-    showNotification(`✅ Successfully saved credentials for ${updated.name}!`);
+    showNotification(
+      approvedNow
+        ? `✅ Successfully saved credentials for ${updated.name}!`
+        : `⏳ ${updated.name} saved as PENDING_APPROVAL — Super Master / Branch Master must approve.`
+    );
+
+    // Server mirror (never throws; hierarchy rule enforced server-side too)
+    const payload = {
+      email: updated.email,
+      name: updated.name,
+      password: updated.password,
+      phone: updated.phone,
+      role: updated.role,
+      division: updated.division || undefined,
+      platformBranch: updated.platformBranch,
+    };
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-client-role': currentRole || '',
+    };
+    fetch(editingAdmin ? `/api/admins/${encodeURIComponent(updated.id)}` : '/api/admins', {
+      method: editingAdmin ? 'PUT' : 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    })
+      .then((r) => r.json().catch(() => null))
+      .then((data) => {
+        if (data && data.admin?.status === 'PENDING_APPROVAL') {
+          const pending = { ...updated, status: 'PENDING_APPROVAL' as EnterpriseAdminRecord['status'] };
+          credentialsService.upsertEnterpriseAdmin(pending);
+          setAdmins(credentialsService.getEnterpriseAdmins());
+          showNotification(`⏳ ${updated.name} is PENDING_APPROVAL on the server.`);
+        }
+      })
+      .catch(() => {/* offline — local registry already updated */});
   };
 
   // Save Super Master Admin settings
@@ -784,21 +942,67 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
                       </div>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                        Boundary Active
-                      </span>
-                      <button
-                        onClick={() => {
-                          const info = `User: ${admin.email}\nPhone: ${admin.phone}\nPassword: ${admin.password}\nRole: DIVISION_ADMIN (${admin.division})\nProvinces: ${admin.allowedProvinces.join(', ')}`;
-                          copyToClipboard(info, `full-${admin.id}`);
-                          showNotification(`📋 Login details for ${admin.name} copied!`);
-                        }}
-                        className="text-[10px] font-bold text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1"
+                    {/* Status / created (Asia/Colombo) / portal link / actions */}
+                    <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            admin.status === 'PENDING_APPROVAL'
+                              ? 'bg-amber-500/10 text-amber-300 border-amber-500/40'
+                              : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/40'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              admin.status === 'PENDING_APPROVAL' ? 'bg-amber-400' : 'bg-emerald-400'
+                            }`}
+                          />
+                          {admin.status === 'PENDING_APPROVAL' ? 'PENDING_APPROVAL' : 'ACTIVE'}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono" title={admin.createdAt}>
+                          ⏱ {formatColombo(admin.createdAt)}
+                        </span>
+                      </div>
+
+                      <a
+                        href={`/?login=true&portal=division&division=${(admin.division || 'western').toLowerCase()}&email=${encodeURIComponent(admin.email)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Open this admin's login portal (email prefilled)"
+                        className="block truncate font-mono text-[10px] text-cyan-500 hover:text-cyan-300 transition-colors"
                       >
-                        Copy Login Details
-                      </button>
+                        /?login=true&portal=division&division={String(admin.division || 'western').toLowerCase()}&email={admin.email}
+                      </a>
+
+                      <div className="flex items-center justify-between gap-1.5">
+                        <button
+                          onClick={() => {
+                            const info = `User: ${admin.email}\nPhone: ${admin.phone}\nPassword: ${admin.password}\nRole: DIVISION_ADMIN (${admin.division})\nProvinces: ${admin.allowedProvinces.join(', ')}`;
+                            copyToClipboard(info, `full-${admin.id}`);
+                            showNotification(`📋 Login details for ${admin.name} copied!`);
+                          }}
+                          className="text-[10px] font-bold text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1"
+                        >
+                          Copy Login Details
+                        </button>
+                        {admin.status === 'PENDING_APPROVAL' && canApproveDivision && (
+                          <button
+                            onClick={() => handleApproveAdmin(admin)}
+                            className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 transition-colors"
+                          >
+                            ✓ Approve
+                          </button>
+                        )}
+                        {canDeleteAdmins && (
+                          <button
+                            onClick={() => handleDeleteAdmin(admin)}
+                            title="Delete (Super Master only)"
+                            className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/40 hover:bg-rose-500/25 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -883,21 +1087,67 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
                       </div>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                        Fleet Control Active
-                      </span>
-                      <button
-                        onClick={() => {
-                          const info = `User: ${admin.email}\nPhone: ${admin.phone}\nPassword: ${admin.password}\nRole: DIVISION_ADMIN (${admin.division})\nProvinces: ${admin.allowedProvinces.join(', ')}`;
-                          copyToClipboard(info, `full-${admin.id}`);
-                          showNotification(`📋 Login details for ${admin.name} copied!`);
-                        }}
-                        className="text-[10px] font-bold text-rose-400 hover:text-rose-300 transition-colors flex items-center gap-1"
+                    {/* Status / created (Asia/Colombo) / portal link / actions */}
+                    <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            admin.status === 'PENDING_APPROVAL'
+                              ? 'bg-amber-500/10 text-amber-300 border-amber-500/40'
+                              : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/40'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              admin.status === 'PENDING_APPROVAL' ? 'bg-amber-400' : 'bg-emerald-400'
+                            }`}
+                          />
+                          {admin.status === 'PENDING_APPROVAL' ? 'PENDING_APPROVAL' : 'ACTIVE'}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono" title={admin.createdAt}>
+                          ⏱ {formatColombo(admin.createdAt)}
+                        </span>
+                      </div>
+
+                      <a
+                        href={`/?login=true&portal=division&division=${(admin.division || 'western').toLowerCase()}&email=${encodeURIComponent(admin.email)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Open this admin's login portal (email prefilled)"
+                        className="block truncate font-mono text-[10px] text-rose-400 hover:text-rose-300 transition-colors"
                       >
-                        Copy Login Details
-                      </button>
+                        /?login=true&portal=division&division={String(admin.division || 'western').toLowerCase()}&email={admin.email}
+                      </a>
+
+                      <div className="flex items-center justify-between gap-1.5">
+                        <button
+                          onClick={() => {
+                            const info = `User: ${admin.email}\nPhone: ${admin.phone}\nPassword: ${admin.password}\nRole: DIVISION_ADMIN (${admin.division})\nProvinces: ${admin.allowedProvinces.join(', ')}`;
+                            copyToClipboard(info, `full-${admin.id}`);
+                            showNotification(`📋 Login details for ${admin.name} copied!`);
+                          }}
+                          className="text-[10px] font-bold text-rose-400 hover:text-rose-300 transition-colors flex items-center gap-1"
+                        >
+                          Copy Login Details
+                        </button>
+                        {admin.status === 'PENDING_APPROVAL' && canApproveDivision && (
+                          <button
+                            onClick={() => handleApproveAdmin(admin)}
+                            className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 transition-colors"
+                          >
+                            ✓ Approve
+                          </button>
+                        )}
+                        {canDeleteAdmins && (
+                          <button
+                            onClick={() => handleDeleteAdmin(admin)}
+                            title="Delete (Super Master only)"
+                            className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/40 hover:bg-rose-500/25 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -1194,9 +1444,9 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
                 ? 'https://maker-digitalracemanagementpanel.vercel.app'
                 : (typeof window !== 'undefined' ? window.location.origin : 'https://maker-digitalracemanagementpanel.vercel.app');
 
-              const superAdminUrl = `${baseUrl}/?portal=super&login=true`;
-              const drMasterUrl = `${baseUrl}/?portal=digitalrace&role=DIGITAL_RACE_MASTER&login=true`;
-              const ttMasterUrl = `${baseUrl}/?portal=tastetrip&role=TASTETRIP_MASTER&login=true`;
+              const superAdminUrl = `${baseUrl}/?login=true&portal=super&email=${encodeURIComponent(creds.superAdminEmail)}`;
+              const drMasterUrl = `${baseUrl}/?login=true&portal=digitalrace&email=${encodeURIComponent(digitalRaceMaster?.email || 'digitalrace.master@ceyteq.com')}`;
+              const ttMasterUrl = `${baseUrl}/?login=true&portal=tastetrip&email=${encodeURIComponent(tasteTripMaster?.email || 'tastetrip.master@ceyteq.com')}`;
 
               return (
                 <div className="mt-6 space-y-6">
@@ -1403,7 +1653,7 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {digitalRaceDivisionAdmins.map((admin) => {
-                        const divUrl = `${baseUrl}/?portal=division&div=${admin.division}&branch=DIGITAL_RACE&login=true`;
+                        const divUrl = `${baseUrl}/?login=true&portal=division&division=${(admin.division || '').toLowerCase()}&email=${encodeURIComponent(admin.email)}`;
                         const divMeta = admin.division ? SRI_LANKA_DIVISIONS[admin.division] : null;
                         return (
                           <div key={admin.id} className="bg-slate-950 p-3.5 rounded-2xl border border-cyan-800/40 space-y-2.5">
@@ -1483,7 +1733,7 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {tasteTripDivisionAdmins.map((admin) => {
-                        const divUrl = `${baseUrl}/?portal=division&div=${admin.division}&branch=TASTETRIP&login=true`;
+                        const divUrl = `${baseUrl}/?login=true&portal=division&division=${(admin.division || '').toLowerCase()}&email=${encodeURIComponent(admin.email)}`;
                         const divMeta = admin.division ? SRI_LANKA_DIVISIONS[admin.division] : null;
                         return (
                           <div key={admin.id} className="bg-slate-950 p-3.5 rounded-2xl border border-rose-800/40 space-y-2.5">
