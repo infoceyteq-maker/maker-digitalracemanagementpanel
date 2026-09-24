@@ -356,7 +356,10 @@ export const RestaurantDashboard: React.FC<RestaurantDashboardProps> = ({
   };
 
   // Current target menu URL
-  const publicMenuUrl = `https://${tenant.customDomain || `${tenant.subdomain}.ceyteq.com`}/table/${selectedTableForQr}`;
+  const publicMenuUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/?portal=menu&t=${tenant.slug || tenant.subdomain}&table=${selectedTableForQr}&standalone=true`
+      : `/?portal=menu&t=${tenant.slug || tenant.subdomain}&table=${selectedTableForQr}&standalone=true`;
 
   return (
     <div className="min-h-screen text-slate-800 pb-16">

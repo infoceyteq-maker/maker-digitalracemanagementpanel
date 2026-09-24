@@ -107,6 +107,7 @@ export default function App() {
   ]);
 
   // Parse URL search parameters on initial mount (for dedicated portal links / QR codes)
+  // Supports: /?portal=menu&t=<slug>&table=N&standalone=true and /table/N path fallback
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
@@ -114,6 +115,18 @@ export default function App() {
     const table = params.get('table');
     const tenantParam = params.get('t');
     const standaloneParam = params.get('standalone');
+    const pathname = window.location.pathname;
+
+    // /table/N path fallback
+    const tablePathMatch = pathname.match(/\/table\/(\d+)/i);
+    if (tablePathMatch) {
+      const parsedTable = parseInt(tablePathMatch[1], 10);
+      if (!isNaN(parsedTable)) setTableNumber(parsedTable);
+      if (!portal) {
+        setActiveView('PUBLIC_MENU');
+        setIsStandalone(true);
+      }
+    }
 
     if (portal === 'menu' || portal === 'customer') {
       setActiveView('PUBLIC_MENU');
@@ -129,7 +142,6 @@ export default function App() {
       if (standaloneParam === 'true') setIsStandalone(true);
     }
 
-    const pathname = window.location.pathname;
     if (
       pathname.includes('/auth/activate') ||
       portal === 'activate' ||
@@ -153,14 +165,103 @@ export default function App() {
       }
     }
 
+    // Load public menu from real server data when ?t=<slug> is present
     if (tenantParam) {
-      setTenants(currentTenants => {
-        const found = currentTenants.find(t => t.slug === tenantParam || t.id === tenantParam);
-        if (found) {
-          setCurrentTenantId(found.id);
+      const slug = tenantParam.toLowerCase().trim();
+      setActiveView('PUBLIC_MENU');
+      if (standaloneParam !== 'false' && (portal === 'menu' || portal === 'customer' || standaloneParam === 'true')) {
+        setIsStandalone(true);
+      }
+
+      // Prefer live API payload; fall back to local mock tenants
+      (async () => {
+        try {
+          const res = await fetch(`/api/public/menu/${encodeURIComponent(slug)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.success && data.tenant) {
+              const apiTenant = data.tenant;
+              const categories = (apiTenant.categories || []).map((c: string, idx: number) =>
+                typeof c === 'string'
+                  ? { id: `cat-api-${idx + 1}`, name: c, iconName: 'Utensils', order: idx + 1 }
+                  : c
+              );
+              const catByName = new Map(categories.map((c: any) => [c.name, c.id]));
+              const products = (apiTenant.products || []).map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                description: p.description || '',
+                price: Number(p.price) || 0,
+                currency: apiTenant.currency || 'LKR',
+                categoryId: catByName.get(p.category) || categories[0]?.id || 'cat-api-1',
+                imageUrl: p.imageUrl || '',
+                isAvailable: p.isAvailable !== false,
+                isSpicy: !!p.isSpicy,
+                isVegetarian: !!p.isVegetarian,
+                approvalStatus: 'PUBLISHED' as const,
+              }));
+
+              const hydrated: Tenant = {
+                id: apiTenant.id || `tenant-${slug}`,
+                name: apiTenant.name || slug,
+                slug: apiTenant.slug || slug,
+                ownerName: 'Restaurant Owner',
+                ownerEmail: `owner@${slug}.com`,
+                status: 'ACTIVE',
+                plan: 'PRO',
+                tier: 'PRO',
+                monthlyFee: 0,
+                createdAt: new Date().toISOString().split('T')[0],
+                subdomain: apiTenant.slug || slug,
+                customDomainVerified: false,
+                dnsStatus: 'NOT_CONFIGURED',
+                dnsExpectedCname: 'cname.ceyteq.com',
+                logoUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=160&auto=format&fit=crop&q=80',
+                coverImageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1200&auto=format&fit=crop&q=80',
+                accentColor: '#e11d48',
+                palette: 'PALETTE_1',
+                socialLinks: {
+                  showFacebook: false,
+                  showInstagram: false,
+                  showTiktok: false,
+                  showYoutube: false,
+                  showWhatsapp: false,
+                },
+                phone: '',
+                address: '',
+                currency: 'LKR',
+                tableCount: apiTenant.tableCount || 12,
+                totalViews: 0,
+                totalOrders: 0,
+                deliveryEnabled: true,
+                paymentGatewayEnabled: false,
+                whatsappMessagingEnabled: false,
+                categories,
+                products,
+              };
+
+              setTenants((prev) => {
+                const without = prev.filter((t) => t.slug !== hydrated.slug && t.id !== hydrated.id);
+                return [hydrated, ...without];
+              });
+              setCurrentTenantId(hydrated.id);
+              setActiveView('PUBLIC_MENU');
+              return;
+            }
+          } else if (res.status === 404) {
+            // Unknown slug → leave normal login / default flow
+            console.warn('[PUBLIC_MENU] Unknown tenant slug:', slug);
+          }
+        } catch (err) {
+          console.warn('[PUBLIC_MENU] Offline or API unavailable, using local tenants', err);
         }
-        return currentTenants;
-      });
+
+        setTenants((currentTenants) => {
+          const found = currentTenants.find((t) => t.slug === slug || t.id === tenantParam);
+          if (found) setCurrentTenantId(found.id);
+          return currentTenants;
+        });
+      })();
     }
   }, []);
 
@@ -216,8 +317,11 @@ export default function App() {
   const canAccessSuperAdmin = 
     currentUser?.role === 'SUPER_ADMIN' || 
     currentUser?.role === 'SUPER_MASTER_ADMIN' || 
+    currentUser?.role === 'MASTER_ADMIN' ||
+    currentUser?.role === 'AGENCY_ADMIN' ||
     currentUser?.role === 'DIGITAL_RACE_MASTER' ||
-    currentUser?.role === 'TASTETRIP_MASTER';
+    currentUser?.role === 'TASTETRIP_MASTER' ||
+    currentUser?.role === 'DIVISION_ADMIN';
 
   // Update tenant details (food prices, stock status, custom domain)
   const handleUpdateTenant = (updatedTenant: Tenant) => {
@@ -410,7 +514,7 @@ export default function App() {
     broadcastDismissWaiterCall(callId);
   };
 
-  // Place order from Customer UI
+  // Place order from Customer UI — also POST to server (server re-prices; silent catch if offline)
   const handlePlaceOrder = (newOrder: CustomerOrder) => {
     setOrders(prev => [newOrder, ...prev]);
     setTenants(prev => prev.map(t => 
@@ -418,6 +522,47 @@ export default function App() {
     ));
     broadcastOrder(newOrder);
     soundService.playOrderBell();
+
+    const tenant = tenants.find((t) => t.id === newOrder.tenantId) || currentTenant;
+    void fetch('/api/public/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tenantSlug: tenant?.slug,
+        tableNumber: newOrder.tableNumber || tableNumber,
+        items: (newOrder.items || []).map((i) => ({
+          productId: i.product?.id,
+          quantity: i.quantity,
+        })),
+        customerName: newOrder.customerName,
+        customerPhone: newOrder.customerPhone,
+        notes: newOrder.notes,
+      }),
+    })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+        if (data?.order?.id) {
+          setOrders((prev) =>
+            prev.map((o) =>
+              o.id === newOrder.id
+                ? {
+                    ...o,
+                    id: data.order.id,
+                    kotNumber: data.order.id,
+                    subtotal: data.order.subtotal ?? o.subtotal,
+                    tax: data.order.tax ?? o.tax,
+                    total: data.order.total ?? o.total,
+                    status: 'RECEIVED',
+                  }
+                : o
+            )
+          );
+        }
+      })
+      .catch(() => {
+        /* offline — local order already stored */
+      });
   };
 
   // Update order status from KOT / Kitchen

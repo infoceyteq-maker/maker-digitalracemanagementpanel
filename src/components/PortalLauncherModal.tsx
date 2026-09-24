@@ -63,7 +63,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
       iconColor: 'text-emerald-500 bg-emerald-50',
       description: 'Clean, mobile-first customer interface with zero admin controls. Customers place orders & call waiter directly from their phones.',
       device: 'Customer Smartphone (QR Scan)',
-      url: `${currentOrigin}/?portal=menu&t=${currentTenant.slug || currentTenant.id}&table=${tableNumber}`,
+      url: `${currentOrigin}/?portal=menu&t=${currentTenant.slug || currentTenant.id}&table=${tableNumber}&standalone=true`,
     },
     {
       key: 'portal-client-dashboard',
