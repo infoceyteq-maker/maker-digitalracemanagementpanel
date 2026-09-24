@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { ActiveView, Tenant, WaiterRequest, AuthUser } from '../types';
 import { CeyteqLogo } from './CeyteqLogo';
+import { canUserAccessView } from '../lib/branchScope';
 
 interface NavbarProps {
   activeView: ActiveView;
@@ -54,6 +55,14 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const currentTenant = tenants.find(t => t.id === currentTenantId) || tenants[0];
   const pendingCallsCount = waiterCalls.filter(c => c.status === 'PENDING').length;
+
+  /**
+   * BRANCH ISOLATION: hide pills that belong to the other vertical.
+   * Anonymous visitors (no session yet) keep the full pill set so the public
+   * demo navigation is unchanged — the App-level LoginGate is what protects them.
+   */
+  const canSee = (view: ActiveView): boolean =>
+    currentUser ? canUserAccessView(currentUser, view) : true;
 
   const navigateTo = (view: ActiveView) => {
     setActiveView(view);
@@ -94,44 +103,50 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Customer UI</span>
             </button>
 
-            <button
-              onClick={() => navigateTo('CLIENT_DASHBOARD')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap relative ${
-                activeView === 'CLIENT_DASHBOARD'
-                  ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
-              }`}
-            >
-              <Store className="w-3.5 h-3.5" />
-              <span>Restaurant Admin</span>
-              {pendingCallsCount > 0 && (
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-              )}
-            </button>
+            {canSee('CLIENT_DASHBOARD') && (
+              <button
+                onClick={() => navigateTo('CLIENT_DASHBOARD')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap relative ${
+                  activeView === 'CLIENT_DASHBOARD'
+                    ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                }`}
+              >
+                <Store className="w-3.5 h-3.5" />
+                <span>Restaurant Admin</span>
+                {pendingCallsCount > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                )}
+              </button>
+            )}
 
-            <button
-              onClick={() => navigateTo('PRO_OPERATIONS')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
-                activeView === 'PRO_OPERATIONS'
-                  ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Pro POS & KOT</span>
-            </button>
+            {canSee('PRO_OPERATIONS') && (
+              <button
+                onClick={() => navigateTo('PRO_OPERATIONS')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                  activeView === 'PRO_OPERATIONS'
+                    ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span>Pro POS &amp; KOT</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => navigateTo('TASTE_TRIP')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap relative ${
-                activeView === 'TASTE_TRIP' || (activeView as any) === 'TASTRIP_DASHBOARD'
-                  ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
-              }`}
-            >
-              <Bike className="w-3.5 h-3.5 text-pink-600" />
-              <span>TasTrip Dashboard</span>
-            </button>
+            {canSee('TASTE_TRIP') && (
+              <button
+                onClick={() => navigateTo('TASTE_TRIP')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap relative ${
+                  activeView === 'TASTE_TRIP' || (activeView as any) === 'TASTRIP_DASHBOARD'
+                    ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                }`}
+              >
+                <Bike className="w-3.5 h-3.5 text-pink-600" />
+                <span>TasTrip Dashboard</span>
+              </button>
+            )}
 
             <button
               onClick={() => navigateTo('SUPER_ADMIN')}
@@ -309,58 +324,64 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/70 font-mono">Dine-in</span>
               </button>
 
-              <button
-                onClick={() => navigateTo('CLIENT_DASHBOARD')}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                  activeView === 'CLIENT_DASHBOARD'
-                    ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black'
-                    : 'text-slate-700 hover:bg-sky-50'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Store className="w-4 h-4 text-pink-600" />
-                  <span>Restaurant Admin Dashboard</span>
-                </div>
-                {pendingCallsCount > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 font-bold">
-                    {pendingCallsCount} calls
+              {canSee('CLIENT_DASHBOARD') && (
+                <button
+                  onClick={() => navigateTo('CLIENT_DASHBOARD')}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeView === 'CLIENT_DASHBOARD'
+                      ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black'
+                      : 'text-slate-700 hover:bg-sky-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Store className="w-4 h-4 text-pink-600" />
+                    <span>Restaurant Admin Dashboard</span>
+                  </div>
+                  {pendingCallsCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 font-bold">
+                      {pendingCallsCount} calls
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {canSee('PRO_OPERATIONS') && (
+                <button
+                  onClick={() => navigateTo('PRO_OPERATIONS')}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeView === 'PRO_OPERATIONS'
+                      ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black'
+                      : 'text-slate-700 hover:bg-sky-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    <span>Pro POS &amp; Kitchen KOT</span>
+                  </div>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200 font-bold">
+                    PRO
                   </span>
-                )}
-              </button>
+                </button>
+              )}
 
-              <button
-                onClick={() => navigateTo('PRO_OPERATIONS')}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                  activeView === 'PRO_OPERATIONS'
-                    ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black'
-                    : 'text-slate-700 hover:bg-sky-50'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Sparkles className="w-4 h-4 text-amber-500" />
-                  <span>Pro POS & Kitchen KOT</span>
-                </div>
-                <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200 font-bold">
-                  PRO
-                </span>
-              </button>
-
-              <button
-                onClick={() => navigateTo('TASTE_TRIP')}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                  activeView === 'TASTE_TRIP' || (activeView as any) === 'TASTRIP_DASHBOARD'
-                    ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black'
-                    : 'text-slate-700 hover:bg-sky-50'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Bike className="w-4 h-4 text-rose-500" />
-                  <span>TasTrip Driver Ecosystem</span>
-                </div>
-                <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-200 font-bold">
-                  FLEET
-                </span>
-              </button>
+              {canSee('TASTE_TRIP') && (
+                <button
+                  onClick={() => navigateTo('TASTE_TRIP')}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeView === 'TASTE_TRIP' || (activeView as any) === 'TASTRIP_DASHBOARD'
+                      ? 'bg-[#00C8FF] text-[#0A192F] shadow-sm font-black'
+                      : 'text-slate-700 hover:bg-sky-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Bike className="w-4 h-4 text-rose-500" />
+                    <span>TasTrip Driver Ecosystem</span>
+                  </div>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-200 font-bold">
+                    FLEET
+                  </span>
+                </button>
+              )}
 
               <button
                 onClick={() => navigateTo('SUPER_ADMIN')}
@@ -456,32 +477,36 @@ export const Navbar: React.FC<NavbarProps> = ({
           <span className="text-[10px] mt-0.5">Menu</span>
         </button>
 
-        <button
-          onClick={() => navigateTo('CLIENT_DASHBOARD')}
-          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all relative ${
-            activeView === 'CLIENT_DASHBOARD'
-              ? 'text-pink-600 font-black scale-105'
-              : 'text-slate-500 hover:text-slate-800 font-medium'
-          }`}
-        >
-          <Store className="w-4 h-4" />
-          <span className="text-[10px] mt-0.5">Admin</span>
-          {pendingCallsCount > 0 && (
-            <span className="absolute top-1 right-2 w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-          )}
-        </button>
+        {canSee('CLIENT_DASHBOARD') && (
+          <button
+            onClick={() => navigateTo('CLIENT_DASHBOARD')}
+            className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all relative ${
+              activeView === 'CLIENT_DASHBOARD'
+                ? 'text-pink-600 font-black scale-105'
+                : 'text-slate-500 hover:text-slate-800 font-medium'
+            }`}
+          >
+            <Store className="w-4 h-4" />
+            <span className="text-[10px] mt-0.5">Admin</span>
+            {pendingCallsCount > 0 && (
+              <span className="absolute top-1 right-2 w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            )}
+          </button>
+        )}
 
-        <button
-          onClick={() => navigateTo('PRO_OPERATIONS')}
-          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all ${
-            activeView === 'PRO_OPERATIONS'
-              ? 'text-amber-600 font-black scale-105'
-              : 'text-slate-500 hover:text-slate-800 font-medium'
-          }`}
-        >
-          <Sparkles className="w-4 h-4" />
-          <span className="text-[10px] mt-0.5">POS/KOT</span>
-        </button>
+        {canSee('PRO_OPERATIONS') && (
+          <button
+            onClick={() => navigateTo('PRO_OPERATIONS')}
+            className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all ${
+              activeView === 'PRO_OPERATIONS'
+                ? 'text-amber-600 font-black scale-105'
+                : 'text-slate-500 hover:text-slate-800 font-medium'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span className="text-[10px] mt-0.5">POS/KOT</span>
+          </button>
+        )}
 
         <button
           onClick={() => navigateTo('SUPER_ADMIN')}

@@ -15,6 +15,8 @@ import { RbacBarrier } from './components/RbacBarrier';
 import { GlobalErrorBoundary } from './components/GlobalErrorBoundary';
 import { AccountActivationView } from './components/AccountActivationView';
 import { LoginGate } from './components/LoginGate';
+import { DashboardSidebar, BEARER_TOKEN_KEY } from './components/DashboardSidebar';
+import { canUserAccessView, homeViewFor, isSuperMaster } from './lib/branchScope';
 import { INITIAL_TENANTS, INITIAL_ORDERS, INITIAL_DRIVERS, INITIAL_DEPLOYMENTS, generateTenantDailyTrends } from './mockData';
 import { ActiveView, Tenant, TenantStatus, WaiterRequest, CustomerOrder, DeliveryDriver, TasteTripDeployment, AuthUser } from './types';
 import { soundService } from './lib/audioService';
@@ -330,6 +332,15 @@ export default function App() {
     currentUser?.role === 'TASTETRIP_MASTER' ||
     currentUser?.role === 'DIVISION_ADMIN';
 
+  // -------------------------------------------------------------------------
+  // BRANCH ISOLATION (iron wall) — derived actor flags
+  // -------------------------------------------------------------------------
+  const isSuperMasterUser = isSuperMaster(currentUser?.role);
+  /** TasteTrip fleet access: Super Master + TasteTrip master only. */
+  const canSeeTasteTrip = canUserAccessView(currentUser, 'TASTE_TRIP');
+  /** Destructive / credential maintenance is reserved for the Super Master. */
+  const canRunMaintenance = isSuperMasterUser;
+
   // Update tenant details (food prices, stock status, custom domain)
   const handleUpdateTenant = (updatedTenant: Tenant) => {
     setTenants(prev => prev.map(t => t.id === updatedTenant.id ? updatedTenant : t));
@@ -634,22 +645,31 @@ export default function App() {
       <LoginGate
         portalTarget={activeView}
         initialEmail={loginEmailParam}
-        onLoginSuccess={(user, _token, redirectUrl) => {
+        onLoginSuccess={(user, token, redirectUrl) => {
           setCurrentUser(user);
           credentialsService.setCurrentSessionUser(user);
+
+          // Persist the SERVER-ISSUED token so the guarded /api/super/*
+          // maintenance endpoints can present a real Bearer session.
+          if (token && token.startsWith('jwt_token_')) {
+            try {
+              localStorage.setItem(BEARER_TOKEN_KEY, token);
+            } catch {
+              /* storage unavailable — session cookie still applies */
+            }
+          }
+
           setIsLoginGateOpen(false);
           setIsAuthModalOpen(false);
-          if (redirectUrl) {
-            if (
-              redirectUrl.includes('/dashboard/super') ||
-              redirectUrl.includes('division') ||
-              redirectUrl.includes('digital-race') ||
-              redirectUrl.includes('tastetrip')
-            ) {
-              setActiveView('SUPER_ADMIN');
-            } else if (redirectUrl.includes('restaurant')) {
-              setActiveView('CLIENT_DASHBOARD');
-            }
+
+          // Deterministic, branch-correct landing view:
+          //   DR master -> CLIENT_DASHBOARD · TT master -> TASTE_TRIP
+          //   Super Master / Division -> SUPER_ADMIN
+          const home = homeViewFor(user) as ActiveView;
+          if (redirectUrl && redirectUrl.includes('restaurant') && home !== 'SUPER_ADMIN') {
+            setActiveView('CLIENT_DASHBOARD');
+          } else {
+            setActiveView(home);
           }
         }}
         onOpenDualOtpReset={() => {
@@ -717,7 +737,16 @@ export default function App() {
             </div>
           )}
 
-          <main className="flex-1 pb-16 md:pb-0">
+          <div className="flex-1 flex flex-col lg:flex-row">
+            {currentUser && !isStandalone && activeView !== 'PUBLIC_MENU' && (
+              <DashboardSidebar
+                currentUser={currentUser}
+                activeView={activeView}
+                setActiveView={setActiveView}
+              />
+            )}
+
+            <main className="flex-1 pb-16 md:pb-0 min-w-0">
             {activeView === 'PUBLIC_MENU' && (
               <CustomerUI
                 tenant={currentTenant}
@@ -740,7 +769,7 @@ export default function App() {
                 waiterCalls={waiterCalls}
                 onDismissWaiterCall={handleDismissWaiterCall}
                 onBackToSuperAdmin={() => setActiveView('SUPER_ADMIN')}
-                onOpenTasTripDashboard={() => setActiveView('TASTE_TRIP')}
+                onOpenTasTripDashboard={canSeeTasteTrip ? () => setActiveView('TASTE_TRIP') : undefined}
               />
             )}
 
@@ -781,12 +810,13 @@ export default function App() {
                     setCurrentTenantId(id);
                     setActiveView('CLIENT_DASHBOARD');
                   }}
-                  onNavigateToTasteTrip={() => setActiveView('TASTE_TRIP')}
+                  onNavigateToTasteTrip={canSeeTasteTrip ? () => setActiveView('TASTE_TRIP') : undefined}
                   onUpdateTenant={handleUpdateTenant}
                   drivers={drivers}
-                  onClearDemoOrders={handleClearDemoOrders}
-                  onResetAllDemoData={handleResetAllDemoData}
+                  onClearDemoOrders={canRunMaintenance ? handleClearDemoOrders : undefined}
+                  onResetAllDemoData={canRunMaintenance ? handleResetAllDemoData : undefined}
                   onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                  currentUser={currentUser}
                 />
               ) : (
                 <RbacBarrier
@@ -832,7 +862,8 @@ export default function App() {
             {activeView === 'ARCHITECTURE' && (
               <ArchitectureHub tenants={tenants} />
             )}
-          </main>
+            </main>
+          </div>
         </div>
 
         {/* Multi-Portal Launcher & Real-Time Sync Modal */}
@@ -847,6 +878,7 @@ export default function App() {
           }}
           isStandalone={isStandalone}
           onToggleStandalone={setIsStandalone}
+          currentUser={currentUser}
         />
 
         {/* Enterprise Authentication, OTP, 2FA, Passwords & Data Cleanup Modal */}

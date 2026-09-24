@@ -37,6 +37,7 @@ import {
   SRI_LANKA_DIVISIONS, 
   PROVINCE_NAMES 
 } from '../lib/rbacMatrix';
+import { resolveActorBranch } from '../lib/branchScope';
 
 interface EnterpriseHierarchyManagerProps {
   onImpersonateUser?: (admin: EnterpriseAdminRecord) => void;
@@ -50,8 +51,8 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
   const [creds, setCreds] = useState(() => credentialsService.getCredentials());
   const [admins, setAdmins] = useState<EnterpriseAdminRecord[]>(() => credentialsService.getEnterpriseAdmins());
   
-  // UI filter tabs
-  const [selectedBranch, setSelectedBranch] = useState<'ALL' | 'DIGITAL_RACE' | 'TASTETRIP'>('ALL');
+  // UI filter tabs (the branch filter state is declared below, once the
+  // session role is known, so it can be LOCKED to the actor's own branch)
   
   // Visibility toggles for passwords
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
@@ -120,6 +121,17 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
     currentRole === 'SUPER_ADMIN' ||
     currentRole === 'DIGITAL_RACE_MASTER' ||
     currentRole === 'TASTETRIP_MASTER';
+
+  // -------------------------------------------------------------------------
+  // BRANCH ISOLATION: the branch filter is LOCKED to the actor's own platform
+  // branch. A Digital Race master can never flip the console over to TasteTrip
+  // rows (and vice versa). Only the Super Master Admin gets a free selector.
+  // -------------------------------------------------------------------------
+  const actorBranch = resolveActorBranch({ role: currentRole });
+  const isBranchLocked = actorBranch !== 'ALL';
+  const [selectedBranch, setSelectedBranch] = useState<'ALL' | 'DIGITAL_RACE' | 'TASTETRIP'>(
+    isBranchLocked ? (actorBranch as 'DIGITAL_RACE' | 'TASTETRIP') : 'ALL',
+  );
 
   // Format an ISO timestamp into the Asia/Colombo (SLST, UTC+5:30) wall-clock display
   const formatColombo = (iso?: string) => {
@@ -487,6 +499,41 @@ export const EnterpriseHierarchyManager: React.FC<EnterpriseHierarchyManagerProp
             </button>
           </div>
         </div>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* PLATFORM BRANCH FILTER — locked to the actor's own branch           */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+          Platform Branch Filter
+        </span>
+        {(['ALL', 'DIGITAL_RACE', 'TASTETRIP'] as const).map((branch) => {
+          const isLockedOut = isBranchLocked && branch !== actorBranch;
+          const isActive = selectedBranch === branch;
+          return (
+            <button
+              key={branch}
+              type="button"
+              disabled={isLockedOut}
+              onClick={() => setSelectedBranch(branch)}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border ${
+                isActive
+                  ? 'bg-[#00C8FF] text-[#0A192F] border-[#00C8FF]'
+                  : isLockedOut
+                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed line-through'
+                    : 'bg-white text-slate-600 border-slate-300 hover:border-[#00C8FF] hover:text-[#0098CC]'
+              }`}
+            >
+              {branch === 'ALL' ? 'All Branches' : branch.replace('_', ' ')}
+            </button>
+          );
+        })}
+        {isBranchLocked && (
+          <span className="text-[10px] font-bold text-amber-600">
+            🔒 Locked to your branch ({actorBranch.replace('_', ' ')})
+          </span>
+        )}
       </div>
 
       {/* ==================================================================== */}

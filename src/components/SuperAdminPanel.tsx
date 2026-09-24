@@ -39,11 +39,12 @@ import {
   Trash2,
   Copy
 } from 'lucide-react';
-import { Tenant, TenantPlan, TenantStatus, SubscriptionTier, DeliveryDriver } from '../types';
+import { Tenant, TenantPlan, TenantStatus, SubscriptionTier, DeliveryDriver, AuthUser } from '../types';
 import { CeyteqLogo } from './CeyteqLogo';
 import { CeyteqAiChatbot } from './CeyteqAiChatbot';
 import { EnterpriseHierarchyManager } from './EnterpriseHierarchyManager';
 import { credentialsService } from '../lib/credentialsService';
+import { isSuperMaster, resolveActorBranch } from '../lib/branchScope';
 
 interface SuperAdminPanelProps {
   tenants: Tenant[];
@@ -57,6 +58,8 @@ interface SuperAdminPanelProps {
   onClearDemoOrders?: () => void;
   onResetAllDemoData?: (cleanStarterRestaurant?: boolean) => void;
   onOpenAuthModal?: () => void;
+  /** Acting user — drives branch-scoped tab visibility. */
+  currentUser?: AuthUser | null;
 }
 
 export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
@@ -71,9 +74,19 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
   onClearDemoOrders,
   onResetAllDemoData,
   onOpenAuthModal,
+  currentUser = null,
 }) => {
   // Navigation tabs within Master Dashboard (Module 1)
   const [activeTab, setActiveTab] = useState<'HIERARCHY' | 'CLIENTS' | 'SALES' | 'FLEET' | 'SETTINGS' | 'AI_COPILOT'>('HIERARCHY');
+
+  // -------------------------------------------------------------------------
+  // BRANCH-SCOPED TABS: a Digital Race master has no driver fleet, a TasteTrip
+  // master has no restaurant clients. Super Master sees everything.
+  // -------------------------------------------------------------------------
+  const isSuper = isSuperMaster(currentUser?.role);
+  const actorBranch = resolveActorBranch(currentUser);
+  const showClientsTab = isSuper || actorBranch === 'DIGITAL_RACE';
+  const showFleetTab = isSuper || actorBranch === 'TASTETRIP';
 
   // Search and Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -365,20 +378,23 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
             </span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('CLIENTS')}
-            className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${
-              activeTab === 'CLIENTS'
-                ? 'border-[#00C8FF] text-[#0098CC]'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Building2 className="w-4 h-4" />
-            <span>Restaurant Clients & Tiers</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-sky-100 text-sky-800 font-mono">
-              {totalTenants}
-            </span>
-          </button>
+          {/* TasteTrip masters have no restaurant clients — tab hidden. */}
+          {showClientsTab && (
+            <button
+              onClick={() => setActiveTab('CLIENTS')}
+              className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${
+                activeTab === 'CLIENTS'
+                  ? 'border-[#00C8FF] text-[#0098CC]'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Restaurant Clients &amp; Tiers</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-sky-100 text-sky-800 font-mono">
+                {totalTenants}
+              </span>
+            </button>
+          )}
 
           <button
             onClick={() => setActiveTab('SALES')}
@@ -395,20 +411,23 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
             </span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('FLEET')}
-            className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${
-              activeTab === 'FLEET'
-                ? 'border-[#00C8FF] text-[#0098CC]'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Bike className="w-4 h-4 text-pink-600" />
-            <span>Taste Trip Driver Network</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-pink-50 text-pink-700 font-mono border border-pink-200">
-              PRO FLEET
-            </span>
-          </button>
+          {/* Digital Race masters have no driver fleet — tab hidden. */}
+          {showFleetTab && (
+            <button
+              onClick={() => setActiveTab('FLEET')}
+              className={`flex items-center gap-2 px-4 py-2.5 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${
+                activeTab === 'FLEET'
+                  ? 'border-[#00C8FF] text-[#0098CC]'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Bike className="w-4 h-4 text-pink-600" />
+              <span>Taste Trip Driver Network</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-pink-50 text-pink-700 font-mono border border-pink-200">
+                PRO FLEET
+              </span>
+            </button>
+          )}
 
           <button
             onClick={() => setActiveTab('SETTINGS')}
@@ -583,7 +602,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
       )}
 
       {/* TAB 1: RESTAURANT CLIENTS & SUBSCRIPTION TIERS */}
-      {activeTab === 'CLIENTS' && (
+      {activeTab === 'CLIENTS' && showClientsTab && (
         <div className="max-w-7xl mx-auto px-4 sm:px-8 mt-6 space-y-6">
           {/* Controls Bar */}
           <div className="bg-white/90 backdrop-blur-sm border border-sky-100 rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-sm">
@@ -1006,7 +1025,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({
       )}
 
       {/* TAB 3: TASTE TRIP DRIVER FLEET MANAGEMENT */}
-      {activeTab === 'FLEET' && (
+      {activeTab === 'FLEET' && showFleetTab && (
         <div className="max-w-7xl mx-auto px-4 sm:px-8 mt-6 space-y-6">
           {/* Fleet Highlight Banner */}
           <div className="bg-gradient-to-r from-white via-pink-50/40 to-sky-50/50 border border-sky-100 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
