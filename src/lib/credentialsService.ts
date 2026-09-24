@@ -49,7 +49,7 @@ export interface RoleCredentials {
   >;
 }
 
-const STORAGE_KEY = 'ceyteq_credentials_v5';
+const STORAGE_KEY = 'ceyteq_credentials_v6';
 
 export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
   // --------------------------------------------------------------------------
@@ -82,7 +82,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
       canAccessGlobalConfig: true,
     },
     status: 'ACTIVE',
-    createdAt: '2026-01-15T08:00:00.000Z',
+    createdAt: new Date().toISOString(),
   },
 
   // --------------------------------------------------------------------------
@@ -115,7 +115,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
       canAccessGlobalConfig: true,
     },
     status: 'ACTIVE',
-    createdAt: '2026-01-15T08:00:00.000Z',
+    createdAt: new Date().toISOString(),
   },
 
   // --------------------------------------------------------------------------
@@ -139,7 +139,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
       canAccessGlobalConfig: false,
     },
     status: 'ACTIVE',
-    createdAt: '2026-02-01T09:00:00.000Z',
+    createdAt: new Date().toISOString(),
   },
   {
     id: 'adm-dr-div-south',
@@ -159,7 +159,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
       canAccessGlobalConfig: false,
     },
     status: 'ACTIVE',
-    createdAt: '2026-02-01T09:00:00.000Z',
+    createdAt: new Date().toISOString(),
   },
   {
     id: 'adm-dr-div-western',
@@ -179,7 +179,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
       canAccessGlobalConfig: false,
     },
     status: 'ACTIVE',
-    createdAt: '2026-02-01T09:00:00.000Z',
+    createdAt: new Date().toISOString(),
   },
   {
     id: 'adm-dr-div-north',
@@ -199,7 +199,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
       canAccessGlobalConfig: false,
     },
     status: 'ACTIVE',
-    createdAt: '2026-02-01T09:00:00.000Z',
+    createdAt: new Date().toISOString(),
   },
 
   // --------------------------------------------------------------------------
@@ -223,7 +223,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
       canAccessGlobalConfig: false,
     },
     status: 'ACTIVE',
-    createdAt: '2026-02-01T09:00:00.000Z',
+    createdAt: new Date().toISOString(),
   },
   {
     id: 'adm-tt-div-south',
@@ -243,7 +243,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
       canAccessGlobalConfig: false,
     },
     status: 'ACTIVE',
-    createdAt: '2026-02-01T09:00:00.000Z',
+    createdAt: new Date().toISOString(),
   },
   {
     id: 'adm-tt-div-western',
@@ -263,7 +263,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
       canAccessGlobalConfig: false,
     },
     status: 'ACTIVE',
-    createdAt: '2026-02-01T09:00:00.000Z',
+    createdAt: new Date().toISOString(),
   },
   {
     id: 'adm-tt-div-north',
@@ -283,7 +283,7 @@ export const INITIAL_ENTERPRISE_ADMINS: EnterpriseAdminRecord[] = [
       canAccessGlobalConfig: false,
     },
     status: 'ACTIVE',
-    createdAt: '2026-02-01T09:00:00.000Z',
+    createdAt: new Date().toISOString(),
   },
 ];
 

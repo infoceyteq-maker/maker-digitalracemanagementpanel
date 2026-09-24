@@ -29,7 +29,7 @@ import {
 import { credentialsService } from './lib/credentialsService';
 import { Tv, Radio, ArrowLeftRight } from 'lucide-react';
 
-const SAVED_TENANTS_KEY = 'ceyteq_tenants_v3';
+const SAVED_TENANTS_KEY = 'ceyteq_tenants_v4';
 const SAVED_ORDERS_KEY = 'ceyteq_orders_v3';
 
 export default function App() {
