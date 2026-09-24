@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
 import http from 'http';
 import dotenv from 'dotenv';
@@ -16,7 +17,7 @@ import { credentialsService } from './src/lib/credentialsService';
 
 dotenv.config();
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // ==========================================
 // IN-MEMORY PUBLIC MENU + ORDERS + ADMIN RBAC
@@ -614,6 +615,152 @@ function seedPublicTenants() {
       },
     ],
   });
+
+  // ── FIRST CUSTOMER — Cafe Umbrella · Ella (Roti & Kottu Hub) ──
+  publicTenantsStore.push({
+    id: 'tenant-umbrella',
+    name: 'Cafe Umbrella',
+    slug: 'cafe-umbrella',
+    currency: 'LKR',
+    tableCount: 12,
+    division: 'UP_COUNTRY',
+    platformBranch: 'DIGITAL_RACE',
+    categories: ['Soup', 'Stews', 'Main Dish', 'Signature Roti', 'Kottu Junction'],
+    products: [
+      {
+        id: 'cu-p-1',
+        name: 'Golden Pumpkin Velouté',
+        description: 'Silky hill-country pumpkin with coconut cream and toasted seeds.',
+        category: 'Soup',
+        price: 750,
+        imageUrl: '/menu/soup-pumpkin.jpg',
+        isSpicy: false,
+        isVegetarian: true,
+        isAvailable: true,
+      },
+      {
+        id: 'cu-p-2',
+        name: 'Clear Chicken Herb Soup',
+        description: 'Crystal-clear golden broth with chicken, glass noodles and coriander.',
+        category: 'Soup',
+        price: 850,
+        imageUrl: '/menu/soup-chicken.jpg',
+        isSpicy: false,
+        isVegetarian: false,
+        isAvailable: true,
+      },
+      {
+        id: 'cu-p-3',
+        name: 'Creamy Ceylon Chicken Stew',
+        description: 'Velvety coconut milk stew with curry leaves and cardamom, with buttered roti.',
+        category: 'Stews',
+        price: 1400,
+        imageUrl: '/menu/stew-chicken.jpg',
+        isSpicy: false,
+        isVegetarian: false,
+        isAvailable: true,
+      },
+      {
+        id: 'cu-p-4',
+        name: 'Devilled Beef Hot Pot',
+        description: 'Caramelised soy-glazed beef with charred peppers, bubbling in cast iron.',
+        category: 'Stews',
+        price: 1750,
+        imageUrl: '/menu/stew-beef.jpg',
+        isSpicy: true,
+        isVegetarian: false,
+        isAvailable: true,
+      },
+      {
+        id: 'cu-p-5',
+        name: 'Ella Mountain Chicken Curry & Rice',
+        description: 'Clay-pot chicken curry with rich amber gravy over fluffy samba rice.',
+        category: 'Main Dish',
+        price: 1650,
+        imageUrl: '/menu/main-curry.jpg',
+        isSpicy: true,
+        isVegetarian: false,
+        isAvailable: true,
+      },
+      {
+        id: 'cu-p-6',
+        name: 'Fire Wok Nasi Goreng',
+        description: 'Smoky fried rice with fried egg, chicken satay and prawn crackers.',
+        category: 'Main Dish',
+        price: 1500,
+        imageUrl: '/menu/main-nasi.jpg',
+        isSpicy: true,
+        isVegetarian: false,
+        isAvailable: true,
+      },
+      {
+        id: 'cu-p-7',
+        name: 'Umbrella Signature Chicken Roti',
+        description: 'Golden paratha parcels packed with spiced chicken and potato.',
+        category: 'Signature Roti',
+        price: 850,
+        imageUrl: '/menu/roti-signature.jpg',
+        isSpicy: true,
+        isVegetarian: false,
+        isAvailable: true,
+      },
+      {
+        id: 'cu-p-8',
+        name: 'Island Pol Roti & Lunu Miris',
+        description: 'Rustic coconut flatbreads with fierce red lunu miris.',
+        category: 'Signature Roti',
+        price: 450,
+        imageUrl: '/menu/roti-pol.jpg',
+        isSpicy: true,
+        isVegetarian: true,
+        isAvailable: true,
+      },
+      {
+        id: 'cu-p-9',
+        name: 'Umbrella Ultimate Legend Kottu',
+        description: 'Godhamba roti chopped at full tempo with chicken, egg, mushrooms and sausage.',
+        category: 'Kottu Junction',
+        price: 1900,
+        imageUrl: '/menu/kottu-legend.jpg',
+        isSpicy: true,
+        isVegetarian: false,
+        isAvailable: true,
+      },
+      {
+        id: 'cu-p-10',
+        name: 'Chicken Cheese Blast Kottu',
+        description: 'Grilled chicken and roti under a molten mozzarella avalanche.',
+        category: 'Kottu Junction',
+        price: 1550,
+        imageUrl: '/menu/kottu-cheese.jpg',
+        isSpicy: true,
+        isVegetarian: false,
+        isAvailable: true,
+      },
+      {
+        id: 'cu-p-11',
+        name: 'Midnight Egg & Cheese Kottu',
+        description: 'Roti ribbons folded with scrambled egg and melted cheese.',
+        category: 'Kottu Junction',
+        price: 1350,
+        imageUrl: '/menu/kottu-egg.jpg',
+        isSpicy: true,
+        isVegetarian: false,
+        isAvailable: true,
+      },
+      {
+        id: 'cu-p-12',
+        name: 'Ella Greens Veggie Kottu',
+        description: 'Carrot, beans, leeks and cabbage chopped through soft roti.',
+        category: 'Kottu Junction',
+        price: 1150,
+        imageUrl: '/menu/kottu-veg.jpg',
+        isSpicy: true,
+        isVegetarian: true,
+        isAvailable: true,
+      },
+    ],
+  });
 }
 
 async function persistOrderToSupabase(order: PublicOrder) {
@@ -711,6 +858,23 @@ const usersDatabase: Map<string, UserRecord> = new Map([
       phone: '+94771234567',
       name: 'Rohan Perera (Ceylon Spice)',
       passwordHash: hashPassword('password123', demoSalt),
+      salt: demoSalt,
+      role: 'TENANT_OWNER',
+      tier: 'PRO',
+      isEmailVerified: true,
+      mfaEnabled: true,
+      mfaSecret: 'JBSWY3DPEHPK3PXP',
+      failedAttempts: 0,
+    },
+  ],
+  [
+    'thejanlahiru44@gmail.com',
+    {
+      id: 'usr-cafe-umbrella',
+      email: 'thejanlahiru44@gmail.com',
+      phone: '+94712054801',
+      name: 'Lahiru Thejan Aravinda (Cafe Umbrella)',
+      passwordHash: hashPassword('Umbrella@2026', demoSalt),
       salt: demoSalt,
       role: 'TENANT_OWNER',
       tier: 'PRO',
@@ -878,13 +1042,277 @@ function getGeminiClient(): GoogleGenAI | null {
   return geminiClient;
 }
 
+// ==========================================
+//  CUSTOMER SELF-REGISTRATION (small JSON DB)
+// ==========================================
+
+const CUSTOMERS_DB_PATH = path.join(process.cwd(), 'data', 'registered_tenants.json');
+const UPLOADS_DIR = path.join(process.cwd(), 'data', 'uploads');
+
+interface CustomerRecord {
+  id: string;
+  slug: string;
+  customerNo: string;
+  registeredAt: string;
+  business: {
+    name: string; province: string; district: string; city: string;
+    address?: string; postalCode?: string; phone: string; email: string;
+  };
+  owner: { name: string; phone: string; email?: string };
+  login: { email: string; passwordHash: string; salt: string };
+  branding: { logoUrl?: string; coverUrl?: string; colorCode?: string; locationLink?: string };
+  social: { facebook?: string; instagram?: string; tiktok?: string; youtube?: string; whatsapp: string };
+  menu: Array<{
+    name: string; category: string; price: number; description?: string;
+    spicy?: boolean; vegetarian?: boolean; imageUrl?: string;
+  }>;
+}
+
+function readCustomers(): CustomerRecord[] {
+  try {
+    return JSON.parse(fs.readFileSync(CUSTOMERS_DB_PATH, 'utf-8')) as CustomerRecord[];
+  } catch {
+    return [];
+  }
+}
+
+function writeCustomers(records: CustomerRecord[]) {
+  fs.mkdirSync(path.dirname(CUSTOMERS_DB_PATH), { recursive: true });
+  fs.writeFileSync(CUSTOMERS_DB_PATH, JSON.stringify(records, null, 2), 'utf-8');
+}
+
+function slugifyName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'restaurant';
+}
+
+function provinceToDivision(province: string): string {
+  const p = (province || '').toLowerCase();
+  if (p.includes('western')) return 'WESTERN';
+  if (p.includes('southern')) return 'SOUTH';
+  if (p.includes('uva') || p.includes('central')) return 'UP_COUNTRY';
+  return 'NORTH';
+}
+
+function saveDataUrlImage(dataUrl: string, baseName: string): string | undefined {
+  const m = /^data:(image\/(png|jpe?g|webp));base64,(.+)$/i.exec(dataUrl || '');
+  if (!m) return undefined;
+  const ext = m[1].toLowerCase().includes('png') ? 'png' : m[1].toLowerCase().includes('webp') ? 'webp' : 'jpg';
+  const file = `${baseName}-${Date.now().toString(36)}.${ext}`;
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  fs.writeFileSync(path.join(UPLOADS_DIR, file), Buffer.from(m[3], 'base64'));
+  return `/uploads/${file}`;
+}
+
+function customerToPublicTenant(rec: CustomerRecord) {
+  const categories = [...new Set(rec.menu.map((m) => m.category || 'Other'))];
+  return {
+    id: `reg-${rec.slug}`,
+    name: rec.business.name,
+    slug: rec.slug,
+    currency: 'LKR' as const,
+    tableCount: 12,
+    division: provinceToDivision(rec.business.province),
+    platformBranch: 'DIGITAL_RACE' as const,
+    categories,
+    products: rec.menu.map((m, i) => ({
+      id: `${rec.slug}-p-${i + 1}`,
+      name: m.name,
+      description: m.description || `${m.name} at ${rec.business.name}.`,
+      category: m.category || 'Other',
+      price: Math.max(0, Math.round(Number(m.price) || 0)),
+      imageUrl: m.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&auto=format&fit=crop&q=80',
+      isSpicy: Boolean(m.spicy),
+      isVegetarian: Boolean(m.vegetarian),
+      isAvailable: true,
+    })),
+  };
+}
+
+function registerCustomerLogin(rec: CustomerRecord) {
+  const email = rec.login.email.toLowerCase().trim();
+  usersDatabase.set(email, {
+    id: `usr-${rec.slug}`,
+    email,
+    phone: rec.owner.phone,
+    name: `${rec.owner.name} (${rec.business.name})`,
+    passwordHash: rec.login.passwordHash,
+    salt: rec.login.salt,
+    role: 'TENANT_OWNER',
+    tier: 'PRO',
+    isEmailVerified: true,
+    mfaEnabled: true,
+    mfaSecret: 'JBSWY3DPEHPK3PXP',
+    failedAttempts: 0,
+  });
+}
+
+/** Re-create registered customers (tenants + logins) after every boot. */
+function loadRegisteredCustomers() {
+  const records = readCustomers();
+  let added = 0;
+  for (const rec of records) {
+    if (!publicTenantsStore.some((t) => t.slug === rec.slug)) {
+      publicTenantsStore.push(customerToPublicTenant(rec));
+      added += 1;
+    }
+    registerCustomerLogin(rec);
+  }
+  if (added > 0) console.log(`[BOOT] Restored ${added} registered customer(s) from database`);
+}
+
 async function startServer() {
   await seedAdminsOnBoot();
   seedPublicTenants();
+  loadRegisteredCustomers();
   console.log(`[BOOT] Seeded ${adminsStore.length} admins, ${publicTenantsStore.length} public tenants`);
 
   const app = express();
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: '12mb' })); // base64 image uploads from registration
+
+  // ── Customer self-registration portal ─────────────────────────────
+  app.get('/register', (_req: Request, res: Response) => {
+    try {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(fs.readFileSync(path.join(process.cwd(), 'register-page.html'), 'utf-8'));
+    } catch {
+      res.status(500).send('Registration page unavailable');
+    }
+  });
+
+  app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d' }));
+
+  app.get('/api/register/tenants', (_req: Request, res: Response) => {
+    const customers = readCustomers().map((r) => ({
+      customerNo: r.customerNo,
+      slug: r.slug,
+      name: r.business.name,
+      province: r.business.province,
+      district: r.business.district,
+      city: r.business.city,
+      dishes: r.menu.length,
+      registeredAt: r.registeredAt,
+    }));
+    res.json({ success: true, customers });
+  });
+
+  app.post('/api/register/tenant', (req: Request, res: Response) => {
+    seedPublicTenants();
+    const b = req.body || {};
+    const business = b.business || {};
+    const login = b.login || {};
+    const social = b.social || {};
+    const menu: Array<Record<string, unknown>> = Array.isArray(b.menu) ? b.menu : [];
+
+    // ── validation ──
+    const errors: string[] = [];
+    if (!business.name || String(business.name).trim().length < 3) errors.push('Business name is required');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(login.username || ''))) errors.push('Admin username must be a valid email');
+    if (!login.password || String(login.password).length < 8) errors.push('Admin password must be at least 8 characters');
+    if (!social.whatsapp || String(social.whatsapp).trim().length < 9) errors.push('WhatsApp number is required');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(business.email || ''))) errors.push('Business email is invalid');
+    const withPrice = menu.filter(
+      (m) => String(m?.name || '').trim() && Number.isFinite(Number(m?.price)),
+    );
+    if (withPrice.length === 0) errors.push('At least one dish with a name and price is required');
+    if (errors.length > 0) {
+      res.status(400).json({ success: false, error: errors[0], errors });
+      return;
+    }
+
+    // ── unique slug ──
+    let slug = slugifyName(String(business.name));
+    const taken = new Set([...readCustomers().map((r) => r.slug), ...publicTenantsStore.map((t) => t.slug)]);
+    let n = 2;
+    while (taken.has(slug)) {
+      slug = `${slugifyName(String(business.name))}-${n}`;
+      n += 1;
+    }
+
+    // ── images ──
+    const branding = b.branding || {};
+    const logoUrl = saveDataUrlImage(String(branding.logoDataUrl || ''), `${slug}-logo`);
+    const coverUrl = saveDataUrlImage(String(branding.coverDataUrl || ''), `${slug}-cover`);
+    const menuImages = withPrice.map((m, i) => saveDataUrlImage(String(m.imageDataUrl || ''), `${slug}-dish-${i + 1}`));
+
+    // ── record ──
+    const existing = readCustomers();
+    const rec: CustomerRecord = {
+      id: `cust-${String(existing.length + 1).padStart(4, '0')}`,
+      slug,
+      customerNo: `DR-${String(existing.length + 1).padStart(3, '0')}`,
+      registeredAt: new Date().toISOString(),
+      business: {
+        name: String(business.name).trim().slice(0, 120),
+        province: String(business.province || '').slice(0, 60),
+        district: String(business.district || '').slice(0, 60),
+        city: String(business.city || '').slice(0, 60),
+        address: String(business.address || '').slice(0, 200),
+        postalCode: String(business.postalCode || '').slice(0, 12),
+        phone: String(business.phone || '').slice(0, 40),
+        email: String(business.email || '').slice(0, 160),
+      },
+      owner: {
+        name: String(b.owner?.name || business.name || '').trim().slice(0, 120),
+        phone: String(b.owner?.phone || business.phone || '').slice(0, 40),
+        email: String(b.owner?.email || '').slice(0, 160),
+      },
+      login: {
+        email: String(login.username).toLowerCase().trim(),
+        passwordHash: hashPassword(String(login.password), demoSalt),
+        salt: demoSalt,
+      },
+      branding: {
+        logoUrl: logoUrl || '/brand/logo.png',
+        coverUrl: coverUrl || '/brand/cover.jpg',
+        colorCode: String(branding.colorCode || '#ff6a2e').slice(0, 9),
+        locationLink: String(branding.locationLink || '').slice(0, 500),
+      },
+      social: {
+        facebook: String(social.facebook || '').slice(0, 300) || undefined,
+        instagram: String(social.instagram || '').slice(0, 300) || undefined,
+        tiktok: String(social.tiktok || '').slice(0, 300) || undefined,
+        youtube: String(social.youtube || '').slice(0, 300) || undefined,
+        whatsapp: String(social.whatsapp).slice(0, 40),
+      },
+      menu: withPrice.map((m, i) => ({
+        name: String(m.name).trim().slice(0, 120),
+        category: String(m.category || 'Other').slice(0, 60),
+        price: Math.max(0, Math.round(Number(m.price) || 0)),
+        description: String(m.description || '').slice(0, 400),
+        spicy: Boolean(m.spicy),
+        vegetarian: Boolean(m.vegetarian),
+        imageUrl: menuImages[i] || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&auto=format&fit=crop&q=80',
+      })),
+    };
+
+    // ── persist to the small database ──
+    existing.push(rec);
+    writeCustomers(existing);
+
+    // ── go live instantly: tenant + login ──
+    publicTenantsStore.push(customerToPublicTenant(rec));
+    registerCustomerLogin(rec);
+
+    securityAuditLogs.unshift({
+      id: `register-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      eventType: 'CUSTOMER_REGISTERED',
+      severity: 'LOW',
+      ipAddress: req.ip || '127.0.0.1',
+      details: `New customer ${rec.customerNo} · ${rec.business.name} (${slug}) with ${rec.menu.length} dishes`,
+    });
+
+    res.status(201).json({
+      success: true,
+      customerNo: rec.customerNo,
+      slug: rec.slug,
+      businessName: rec.business.name,
+      login: { username: rec.login.email },
+      menuCount: rec.menu.length,
+      menuUrl: `/api/public/menu/${slug}`,
+      panelLoginUrl: '/',
+    });
+  });
 
   // ==========================================
   // 2. ENTERPRISE HTTP SECURITY HEADERS (OWASP)

@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Digital Race · Customer Registration — Onboard your restaurant</title>
+<style>
+  :root {
+    --ink: #0a0a0a; --coal: #151312; --card: #1c1917;
+    --sun: #ffc93d; --flame: #ff6a2e; --cherry: #ff3b47;
+    --cream: #fff4e3; --mut: rgba(255,244,227,.55); --line: rgba(255,255,255,.09);
+    --ok: #3ddc78;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--ink); color: var(--cream); min-height: 100vh;
+    font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+    background-image:
+      radial-gradient(60% 34% at 16% -6%, rgba(255,106,46,.12), transparent 62%),
+      radial-gradient(48% 30% at 88% 4%, rgba(255,201,61,.07), transparent 60%),
+      radial-gradient(70% 40% at 50% 112%, rgba(255,59,71,.12), transparent 62%);
+    background-attachment: fixed;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 20px 16px 90px; }
+  header.brand { display: flex; align-items: center; gap: 12px; padding: 10px 2px 22px; }
+  .brandmark {
+    width: 46px; height: 46px; border-radius: 14px; flex: none;
+    background: linear-gradient(135deg, var(--sun), var(--flame) 60%, var(--cherry));
+    display: grid; place-items: center; font-size: 22px;
+    box-shadow: 0 6px 26px rgba(255,106,46,.45);
+  }
+  header.brand h1 { font-size: 15.5px; font-weight: 800; letter-spacing: .02em; }
+  header.brand p { font-size: 10.5px; letter-spacing: .28em; color: var(--sun); font-weight: 700; margin-top: 3px; }
+
+  /* steps rail */
+  .rail { display: flex; gap: 6px; margin: 4px 0 22px; }
+  .rail span { flex: 1; height: 4px; border-radius: 99px; background: rgba(255,255,255,.09); transition: all .4s; }
+  .rail span.on { background: linear-gradient(90deg, var(--sun), var(--flame), var(--cherry)); box-shadow: 0 0 12px rgba(255,106,46,.55); }
+
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.008));
+    border: 1px solid var(--line); border-radius: 22px; padding: 22px 18px;
+    box-shadow: 0 18px 60px rgba(0,0,0,.5);
+  }
+  .stephead { margin-bottom: 16px; }
+  .stephead .kicker { font-size: 10px; font-weight: 800; letter-spacing: .3em; color: var(--sun); }
+  .stephead h2 { font-size: 21px; font-weight: 800; margin-top: 6px; }
+  .stephead p { font-size: 12.5px; color: var(--mut); margin-top: 5px; line-height: 1.5; }
+
+  label.f { display: block; margin-top: 13px; }
+  label.f > span { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .14em; color: rgba(255,244,227,.5); margin-bottom: 6px; }
+  label.f > span b { color: var(--flame); }
+  input[type=text], input[type=email], input[type=tel], input[type=password], input[type=number], input[type=url], select, textarea {
+    width: 100%; background: rgba(255,255,255,.045); color: var(--cream);
+    border: 1px solid var(--line); border-radius: 13px; padding: 12px 13px;
+    font-size: 14px; font-family: inherit; outline: none; transition: border .2s, background .2s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: rgba(255,106,46,.65); background: rgba(255,255,255,.07); }
+  select option { background: #1c1917; color: var(--cream); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; gap: 0; } }
+  .err { color: #ff8f9a; font-size: 11.5px; font-weight: 600; margin-top: 5px; display: none; }
+  .row-bad input, .row-bad select { border-color: rgba(255,59,71,.6) !important; }
+  .row-bad .err { display: block; }
+
+  /* uploads */
+  .up {
+    margin-top: 13px; border: 1.6px dashed rgba(255,150,80,.4); border-radius: 16px;
+    padding: 16px; text-align: center; cursor: pointer; transition: all .2s; background: rgba(255,255,255,.02);
+  }
+  .up:hover { border-color: var(--flame); background: rgba(255,106,46,.06); }
+  .up .ico { font-size: 24px; }
+  .up .t1 { font-size: 13px; font-weight: 700; margin-top: 6px; }
+  .up .t2 { font-size: 11px; color: var(--mut); margin-top: 3px; }
+  .up input { display: none; }
+  .preview { position: relative; margin-top: 10px; display: none; }
+  .preview img { width: 100%; max-height: 190px; object-fit: cover; border-radius: 13px; border: 1px solid var(--line); }
+  .preview .rm {
+    position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 99px;
+    background: rgba(0,0,0,.65); color: #fff; border: none; font-size: 14px; cursor: pointer;
+  }
+
+  /* color */
+  .colorrow { display: flex; align-items: center; gap: 12px; margin-top: 13px; }
+  .colorrow input[type=color] {
+    width: 52px; height: 44px; border-radius: 12px; border: 1px solid var(--line);
+    background: none; cursor: pointer; padding: 4px;
+  }
+  .colorchip { flex: 1; border-radius: 13px; border: 1px solid var(--line); padding: 11px 13px; font-size: 13px; font-weight: 700; }
+
+  /* menu builder */
+  .menurow { border: 1px solid var(--line); border-radius: 16px; padding: 14px; margin-top: 12px; background: rgba(255,255,255,.02); }
+  .menurow .mh { display: flex; justify-content: space-between; align-items: center; }
+  .menurow .mh b { font-size: 12.5px; color: var(--sun); letter-spacing: .1em; }
+  .menurow .mh button { background: none; border: none; color: #ff8f9a; font-size: 16px; cursor: pointer; padding: 4px; }
+  .checks { display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+  .checks label { display: flex; gap: 7px; align-items: center; font-size: 12.5px; color: var(--mut); cursor: pointer; }
+  .checks input { width: 16px; height: 16px; accent-color: var(--flame); }
+  .addmenu {
+    width: 100%; margin-top: 14px; padding: 13px; border-radius: 14px; cursor: pointer;
+    border: 1.6px dashed rgba(255,150,80,.45); background: none; color: var(--sun);
+    font-size: 13px; font-weight: 800; letter-spacing: .06em; transition: all .2s;
+  }
+  .addmenu:hover { background: rgba(255,106,46,.07); }
+
+  /* nav buttons */
+  .nav { display: flex; gap: 12px; margin-top: 22px; }
+  .btn {
+    flex: 1; height: 52px; border-radius: 15px; border: none; cursor: pointer;
+    font-size: 13.5px; font-weight: 800; letter-spacing: .12em; font-family: inherit;
+    transition: transform .15s;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn.ghost { background: rgba(255,255,255,.05); color: rgba(255,244,227,.7); border: 1px solid var(--line); }
+  .btn.fire {
+    background: linear-gradient(90deg, var(--sun), var(--flame) 55%, var(--cherry));
+    color: #2b060f; box-shadow: 0 10px 36px rgba(255,106,46,.45);
+  }
+  .btn[disabled] { opacity: .55; cursor: wait; }
+
+  /* success */
+  .done { text-align: center; padding: 12px 4px; }
+  .done .big {
+    width: 78px; height: 78px; margin: 6px auto 0; border-radius: 50%;
+    background: linear-gradient(135deg, var(--sun), var(--flame) 60%, var(--cherry));
+    display: grid; place-items: center; font-size: 36px; color: #2b060f; font-weight: 900;
+    box-shadow: 0 0 60px rgba(255,106,46,.55); animation: pop .6s cubic-bezier(.2,1.4,.4,1);
+  }
+  @keyframes pop { from { transform: scale(.3); opacity: 0; } }
+  .done h2 { font-size: 24px; margin-top: 16px; }
+  .done p.sub { color: var(--mut); font-size: 13px; margin-top: 8px; line-height: 1.6; }
+  .ticket { margin: 18px auto 0; max-width: 430px; text-align: left; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.03); }
+  .ticket .tr { display: flex; justify-content: space-between; gap: 12px; padding: 11px 15px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+  .ticket .tr:last-child { border-bottom: none; }
+  .ticket .tr span { color: var(--mut); }
+  .ticket .tr b { text-align: right; word-break: break-all; }
+  .ticket .tr b.hl { color: var(--sun); }
+
+  /* customer list */
+  .custs { margin-top: 34px; }
+  .custs h3 { font-size: 12px; letter-spacing: .3em; color: var(--sun); font-weight: 800; margin-bottom: 12px; }
+  .cust { display: flex; align-items: center; gap: 13px; border: 1px solid var(--line); background: rgba(255,255,255,.025); border-radius: 16px; padding: 12px 14px; margin-top: 10px; }
+  .cust .no { width: 44px; height: 44px; flex: none; border-radius: 12px; display: grid; place-items: center; font-weight: 900; font-size: 12px; color: #2b060f; background: linear-gradient(135deg, var(--sun), var(--cherry)); }
+  .cust .nm { font-size: 14px; font-weight: 800; }
+  .cust .ds { font-size: 11.5px; color: var(--mut); margin-top: 3px; }
+  .cust .menu-badge { margin-left: auto; font-size: 10px; font-weight: 800; letter-spacing: .1em; color: var(--ok); border: 1px solid rgba(61,220,120,.35); background: rgba(61,220,120,.08); padding: 5px 9px; border-radius: 99px; white-space: nowrap; }
+  footer { margin-top: 40px; text-align: center; font-size: 10.5px; color: rgba(255,244,227,.3); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="brand">
+    <div class="brandmark">🔥</div>
+    <div>
+      <h1>Digital Race — Customer Registration</h1>
+      <p>ONBOARD YOUR RESTAURANT</p>
+    </div>
+  </header>
+
+  <div class="rail" id="rail"><span class="on"></span><span></span><span></span><span></span><span></span></div>
+
+  <form id="form" novalidate>
+    <!-- STEP 1 · BUSINESS -->
+    <div class="card step" data-step="0">
+      <div class="stephead">
+        <div class="kicker">STEP 1 / 5</div>
+        <h2>Business Details 🏪</h2>
+        <p>Tell us about your restaurant — this appears on your digital menu.</p>
+      </div>
+      <label class="f"><span>BUSINESS NAME <b>*</b></span><input type="text" name="b_name" placeholder="e.g. Cafe Umbrella" required><em class="err">Business name is required</em></label>
+      <div class="grid2">
+        <label class="f"><span>PROVINCE <b>*</b></span>
+          <select name="b_province" id="province" required><option value="">Select province</option></select>
+          <em class="err">Select a province</em>
+        </label>
+        <label class="f"><span>DISTRICT <b>*</b></span>
+          <select name="b_district" id="district" required><option value="">Select district</option></select>
+          <em class="err">Select a district</em>
+        </label>
+      </div>
+      <div class="grid2">
+        <label class="f"><span>CITY <b>*</b></span><input type="text" name="b_city" placeholder="e.g. Ella" required><em class="err">City is required</em></label>
+        <label class="f"><span>POSTAL CODE</span><input type="text" name="b_postal" placeholder="e.g. 90900"></label>
+      </div>
+      <label class="f"><span>STREET ADDRESS</span><input type="text" name="b_address" placeholder="e.g. Passara Road 3rd Mile"></label>
+      <div class="grid2">
+        <label class="f"><span>BUSINESS PHONE <b>*</b></span><input type="tel" name="b_phone" placeholder="+94 7X XXX XXXX" required><em class="err">Phone is required</em></label>
+        <label class="f"><span>BUSINESS EMAIL <b>*</b></span><input type="email" name="b_email" placeholder="hello@yourcafe.lk" required><em class="err">Valid email required</em></label>
+      </div>
+      <div class="nav"><button type="button" class="btn fire" data-next>CONTINUE →</button></div>
+    </div>
+
+    <!-- STEP 2 · OWNER & LOGIN -->
+    <div class="card step" data-step="1" hidden>
+      <div class="stephead">
+        <div class="kicker">STEP 2 / 5</div>
+        <h2>Owner & Admin Login 👤</h2>
+        <p>Your Restaurant Admin account — use these to sign in and manage orders.</p>
+      </div>
+      <label class="f"><span>OWNER NAME <b>*</b></span><input type="text" name="o_name" placeholder="Full name" required><em class="err">Owner name is required</em></label>
+      <div class="grid2">
+        <label class="f"><span>OWNER PHONE <b>*</b></span><input type="tel" name="o_phone" placeholder="+94 7X XXX XXXX" required><em class="err">Phone is required</em></label>
+        <label class="f"><span>OWNER EMAIL</span><input type="email" name="o_email" placeholder="owner@email.com"></label>
+      </div>
+      <label class="f"><span>ADMIN USERNAME (LOGIN EMAIL) <b>*</b></span><input type="email" name="l_user" placeholder="you@email.com" required><em class="err">Enter a valid email as the username</em></label>
+      <div class="grid2">
+        <label class="f"><span>ADMIN PASSWORD <b>*</b></span><input type="password" name="l_pass" placeholder="Min 8 characters" required><em class="err">Minimum 8 characters</em></label>
+        <label class="f"><span>CONFIRM PASSWORD <b>*</b></span><input type="password" name="l_pass2" placeholder="Repeat password" required><em class="err">Passwords do not match</em></label>
+      </div>
+      <div class="nav">
+        <button type="button" class="btn ghost" data-back>← BACK</button>
+        <button type="button" class="btn fire" data-next>CONTINUE →</button>
+      </div>
+    </div>
+
+    <!-- STEP 3 · BRANDING -->
+    <div class="card step" data-step="2" hidden>
+      <div class="stephead">
+        <div class="kicker">STEP 3 / 5</div>
+        <h2>Branding & Location 🎨</h2>
+        <p>Upload your cover & profile images, pick your brand colour and pin your location.</p>
+      </div>
+      <label class="up" id="upCover">
+        <span class="ico">🌄</span>
+        <div class="t1">COVER PAGE IMAGE</div>
+        <div class="t2">The big banner on top of your menu · JPG/PNG</div>
+        <input type="file" accept="image/*" data-target="cover">
+      </label>
+      <div class="preview" id="pvCover"><img alt="cover preview"><button type="button" class="rm" data-rm="cover">✕</button></div>
+
+      <label class="up" id="upLogo">
+        <span class="ico">☂️</span>
+        <div class="t1">PROFILE / LOGO IMAGE</div>
+        <div class="t2">Shown in the header & app icon · square works best</div>
+        <input type="file" accept="image/*" data-target="logo">
+      </label>
+      <div class="preview" id="pvLogo"><img alt="logo preview"><button type="button" class="rm" data-rm="logo">✕</button></div>
+
+      <div class="colorrow">
+        <input type="color" id="colorCode" value="#ff6a2e">
+        <div class="colorchip" id="colorChip">Brand colour · #ff6a2e</div>
+      </div>
+
+      <label class="f"><span>GOOGLE MAPS / LOCATION LINK</span><input type="url" name="br_location" placeholder="https://maps.google.com/... or https://share.google/..."></label>
+      <div class="nav">
+        <button type="button" class="btn ghost" data-back>← BACK</button>
+        <button type="button" class="btn fire" data-next>CONTINUE →</button>
+      </div>
+    </div>
+
+    <!-- STEP 4 · SOCIAL -->
+    <div class="card step" data-step="3" hidden>
+      <div class="stephead">
+        <div class="kicker">STEP 4 / 5</div>
+        <h2>Social Media Links 🔗</h2>
+        <p>Connect your pages — they appear as buttons on your menu.</p>
+      </div>
+      <label class="f"><span>FACEBOOK PAGE</span><input type="url" name="s_facebook" placeholder="https://facebook.com/yourpage"></label>
+      <label class="f"><span>INSTAGRAM</span><input type="url" name="s_instagram" placeholder="https://instagram.com/yourhandle"></label>
+      <label class="f"><span>TIKTOK</span><input type="url" name="s_tiktok" placeholder="https://tiktok.com/@yourhandle"></label>
+      <label class="f"><span>YOUTUBE</span><input type="url" name="s_youtube" placeholder="https://youtube.com/@yourchannel"></label>
+      <label class="f"><span>WHATSAPP NUMBER <b>*</b></span><input type="tel" name="s_whatsapp" placeholder="+94 7X XXX XXXX" required><em class="err">WhatsApp number is required for orders</em></label>
+      <div class="nav">
+        <button type="button" class="btn ghost" data-back>← BACK</button>
+        <button type="button" class="btn fire" data-next>CONTINUE →</button>
+      </div>
+    </div>
+
+    <!-- STEP 5 · MENU -->
+    <div class="card step" data-step="4" hidden>
+      <div class="stephead">
+        <div class="kicker">STEP 5 / 5</div>
+        <h2>Menu — Add Your Food 🍽️</h2>
+        <p>Add at least one dish. You can add more anytime from the admin panel.</p>
+      </div>
+      <div id="menuRows"></div>
+      <button type="button" class="addmenu" id="addMenuRow">+ ADD ANOTHER DISH</button>
+      <p class="err" id="menuErr" style="margin-top:10px">Add at least one dish with a name and price</p>
+      <div class="nav">
+        <button type="button" class="btn ghost" data-back>← BACK</button>
+        <button type="submit" class="btn fire" id="submitBtn">🚀 CREATE MY RESTAURANT</button>
+      </div>
+    </div>
+  </form>
+
+  <!-- SUCCESS -->
+  <div class="card done" id="done" hidden>
+    <div class="big">✓</div>
+    <h2>Restaurant Created! 🎉</h2>
+    <p class="sub" id="doneSub"></p>
+    <div class="ticket" id="ticket"></div>
+    <div class="nav" style="max-width:430px;margin:20px auto 0">
+      <button type="button" class="btn ghost" onclick="location.reload()">+ NEW REGISTRATION</button>
+      <a class="btn fire" id="menuLink" href="#" target="_blank" rel="noopener" style="display:grid;place-items:center;text-decoration:none">VIEW MENU DATA →</a>
+    </div>
+  </div>
+
+  <!-- customer list -->
+  <div class="custs">
+    <h3>REGISTERED RESTAURANTS</h3>
+    <div id="custList"><div class="cust"><div class="no">…</div><div><div class="nm">Loading customers…</div></div></div></div>
+  </div>
+
+  <footer>Powered by Digital Race · InfoceyTQ — Restaurant Digital Menus, Sri Lanka</footer>
+</div>
+
+<script>
+/* ── province → district data ── */
+const P_D = {
+  'Central': ['Kandy','Matale','Nuwara Eliya'],
+  'Eastern': ['Ampara','Batticaloa','Trincomalee'],
+  'North Central': ['Anuradhapura','Polonnaruwa'],
+  'Northern': ['Jaffna','Kilinochchi','Mannar','Mullaitivu','Vavuniya'],
+  'North Western': ['Kurunegala','Puttalam'],
+  'Sabaragamuwa': ['Kegalle','Ratnapura'],
+  'Southern': ['Galle','Hambantota','Matara'],
+  'Uva': ['Badulla','Monaragala'],
+  'Western': ['Colombo','Gampaha','Kalutara'],
+};
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => [...(r || document).querySelectorAll(s)];
+const provinceSel = $('#province'), districtSel = $('#district');
+Object.keys(P_D).forEach((p) => provinceSel.insertAdjacentHTML('beforeend', `<option>${p}</option>`));
+provinceSel.addEventListener('change', () => {
+  districtSel.innerHTML = '<option value="">Select district</option>';
+  (P_D[provinceSel.value] || []).forEach((d) => districtSel.insertAdjacentHTML('beforeend', `<option>${d}</option>`));
+});
+
+/* ── steps ── */
+let step = 0;
+const steps = $$('.step');
+const rail = $$('#rail span');
+function go(n) {
+  step = Math.max(0, Math.min(4, n));
+  steps.forEach((s, i) => { s.hidden = i !== step; });
+  rail.forEach((r, i) => r.classList.toggle('on', i <= step));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+$$('[data-next]').forEach((b) => b.addEventListener('click', () => {
+  if (!validateStep(step)) return;
+  go(step + 1);
+}));
+$$('[data-back]').forEach((b) => b.addEventListener('click', () => go(step - 1)));
+
+function validateStep(n) {
+  const card = steps[n];
+  let ok = true;
+  $$('input, select', card).forEach((el) => {
+    const row = el.closest('label.f') || el.parentElement;
+    row.classList.remove('row-bad');
+    if (!el.required) return;
+    const v = el.value.trim();
+    let bad = !v;
+    if (!bad && el.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) bad = true;
+    if (!bad && n === 1 && el.name === 'l_pass' && v.length < 8) bad = true;
+    if (!bad && n === 1 && el.name === 'l_pass2' && v !== $('input[name=l_pass]').value) bad = true;
+    if (bad) { row.classList.add('row-bad'); ok = false; }
+  });
+  if (n === 3) {
+    const wa = $('input[name=s_whatsapp]');
+    if (!wa.value.trim()) { wa.closest('label.f').classList.add('row-bad'); ok = false; }
+  }
+  return ok;
+}
+
+/* ── uploads (client-side resize → dataURL) ── */
+const images = { cover: null, logo: null };
+function resizeToDataURL(file, maxW, cb) {
+  const img = new Image();
+  const reader = new FileReader();
+  reader.onload = () => { img.src = reader.result; };
+  img.onload = () => {
+    const scale = Math.min(1, maxW / img.width);
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * scale);
+    c.height = Math.round(img.height * scale);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    cb(c.toDataURL('image/jpeg', 0.82));
+  };
+  reader.readAsDataURL(file);
+}
+$$('.up input').forEach((inp) => inp.addEventListener('change', () => {
+  const target = inp.dataset.target;
+  const file = inp.files[0];
+  if (!file) return;
+  resizeToDataURL(file, target === 'cover' ? 1400 : 700, (dataUrl) => {
+    images[target] = dataUrl;
+    const pv = $('#pv' + target.charAt(0).toUpperCase() + target.slice(1));
+    $('img', pv).src = dataUrl;
+    pv.style.display = 'block';
+    inp.closest('.up').style.display = 'none';
+  });
+}));
+$$('[data-rm]').forEach((b) => b.addEventListener('click', (e) => {
+  e.preventDefault();
+  const target = b.dataset.rm;
+  images[target] = null;
+  $('#pv' + target.charAt(0).toUpperCase() + target.slice(1)).style.display = 'none';
+  $('#up' + target.charAt(0).toUpperCase() + target.slice(1)).style.display = 'block';
+}));
+
+/* ── colour picker ── */
+const cc = $('#colorCode');
+cc.addEventListener('input', () => {
+  $('#colorChip').textContent = 'Brand colour · ' + cc.value;
+  $('#colorChip').style.background = cc.value + '22';
+  $('#colorChip').style.borderColor = cc.value + '66';
+});
+
+/* ── menu builder ── */
+let menuIdx = 0;
+const catOptions = ['Soup','Stews','Main Dish','Signature Roti','Kottu Junction','Rice & Curry','Sri Lankan','Chinese','Short Eats','Desserts','Beverages','Other'];
+function addMenuRow() {
+  menuIdx++;
+  const row = document.createElement('div');
+  row.className = 'menurow';
+  row.dataset.idx = menuIdx;
+  row.innerHTML = `
+    <div class="mh"><b>DISH #${String(menuIdx).padStart(2, '0')}</b><button type="button" title="Remove" data-del>🗑</button></div>
+    <div class="grid2">
+      <label class="f"><span>DISH NAME <b>*</b></span><input type="text" placeholder="e.g. Chicken Kottu"></label>
+      <label class="f"><span>PRICE (LKR) <b>*</b></span><input type="number" min="0" placeholder="e.g. 1500"></label>
+    </div>
+    <div class="grid2">
+      <label class="f"><span>CATEGORY</span><select class="m-cat">${catOptions.map((c) => `<option>${c}</option>`).join('')}</select></label>
+      <label class="f"><span>DISH PHOTO (OPTIONAL)</span><input type="file" accept="image/*" class="m-img" style="padding:8px 0"></label>
+    </div>
+    <label class="f"><span>DESCRIPTION</span><textarea rows="2" placeholder="Short tasty description…"></textarea></label>
+    <div class="checks">
+      <label><input type="checkbox" class="m-spicy"> 🌶 Spicy</label>
+      <label><input type="checkbox" class="m-veg"> 🥬 Vegetarian</label>
+    </div>`;
+  row.querySelector('[data-del]').addEventListener('click', () => row.remove());
+  row.querySelector('.m-img').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (f) resizeToDataURL(f, 900, (d) => { e.target.dataset.dataurl = d; e.target.dataset.name = f.name; });
+  });
+  $('#menuRows').appendChild(row);
+}
+addMenuRow(); // start with one
+$('#addMenuRow').addEventListener('click', addMenuRow);
+
+/* ── submit ── */
+$('#form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const menuErr = $('#menuErr');
+  menuErr.style.display = 'none';
+
+  const menu = [];
+  $$('.menurow').forEach((row) => {
+    const name = $('input[type=text]', row).value.trim();
+    const price = parseFloat($('input[type=number]', row).value);
+    if (!name || !(price >= 0) || $('input[type=number]', row).value === '') return;
+    const imgEl = $('.m-img', row);
+    menu.push({
+      name,
+      price,
+      category: $('.m-cat', row).value,
+      description: $('textarea', row).value.trim(),
+      spicy: $('.m-spicy', row).checked,
+      vegetarian: $('.m-veg', row).checked,
+      imageDataUrl: imgEl.dataset.dataurl || null,
+      imageName: imgEl.dataset.name || null,
+    });
+  });
+  if (menu.length === 0) { menuErr.style.display = 'block'; return; }
+
+  const v = (n) => $(`[name=${n}]`).value.trim();
+  const btn = $('#submitBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ CREATING…';
+
+  const payload = {
+    business: {
+      name: v('b_name'), province: v('b_province'), district: v('b_district'),
+      city: v('b_city'), address: v('b_address'), postalCode: v('b_postal'),
+      phone: v('b_phone'), email: v('b_email'),
+    },
+    owner: { name: v('o_name'), phone: v('o_phone'), email: v('o_email') },
+    login: { username: v('l_user'), password: v('l_pass') },
+    branding: {
+      colorCode: cc.value,
+      locationLink: v('br_location'),
+      coverDataUrl: images.cover,
+      logoDataUrl: images.logo,
+    },
+    social: {
+      facebook: v('s_facebook'), instagram: v('s_instagram'), tiktok: v('s_tiktok'),
+      youtube: v('s_youtube'), whatsapp: v('s_whatsapp'),
+    },
+    menu,
+  };
+
+  try {
+    const res = await fetch('/api/register/tenant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'Registration failed');
+
+    $('#form').hidden = true;
+    $('#rail').hidden = true;
+    const done = $('#done');
+    done.hidden = false;
+    $('#doneSub').textContent = `${data.businessName} is now live on Digital Race. Sign in to the admin panel and start receiving orders.`;
+    $('#ticket').innerHTML = `
+      <div class="tr"><span>CUSTOMER No</span><b class="hl">${data.customerNo}</b></div>
+      <div class="tr"><span>BUSINESS</span><b>${data.businessName}</b></div>
+      <div class="tr"><span>ADMIN USERNAME</span><b>${data.login.username}</b></div>
+      <div class="tr"><span>ADMIN PASSWORD</span><b>(as you chose — keep it safe)</b></div>
+      <div class="tr"><span>MENU SLUG</span><b>${data.slug}</b></div>
+      <div class="tr"><span>DISHES ADDED</span><b>${data.menuCount}</b></div>
+      <div class="tr"><span>KITCHEN MENU API</span><b style="font-size:11px">${data.menuUrl}</b></div>`;
+    $('#menuLink').href = data.menuUrl;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    loadCustomers();
+  } catch (err) {
+    alert('⚠️ ' + err.message);
+    btn.disabled = false;
+    btn.textContent = '🚀 CREATE MY RESTAURANT';
+  }
+});
+
+/* ── customer list ── */
+async function loadCustomers() {
+  try {
+    const res = await fetch('/api/register/tenants');
+    const data = await res.json();
+    if (!data.success) return;
+    $('#custList').innerHTML = data.customers.map((c) => `
+      <div class="cust">
+        <div class="no">${c.customerNo.split('-')[1]}</div>
+        <div>
+          <div class="nm">${c.name}</div>
+          <div class="ds">${c.district ? c.district + ' · ' : ''}${c.city}${c.city ? ' · ' : ''}${c.dishes} dishes</div>
+        </div>
+        <span class="menu-badge">● LIVE</span>
+      </div>`).join('');
+  } catch { /* leave loading */ }
+}
+loadCustomers();
+</script>
+</body>
+</html>

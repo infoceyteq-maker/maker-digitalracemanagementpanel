@@ -1,0 +1,210 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0a0a0a;
+  --color-coal: #141416;
+  --color-cherry: #ff3b47; /* brand red */
+  --color-flame: #ff6a2e;  /* red-orange bridge */
+  --color-sun: #ffc93d;    /* brand yellow */
+  --color-honey: #ffe9a8;
+  --color-teal: #388c79;   /* logo badge teal */
+  --color-cream: #fff4e3;
+  --font-display: "Sora Variable", "Sora", system-ui, sans-serif;
+  --font-body: "Manrope Variable", "Manrope", system-ui, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-ink);
+  color: #f5f0e9;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: clip;
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: rgba(255, 106, 46, 0.35);
+  color: #fff4e3;
+}
+
+/* ── Utilities ──────────────────────────────────────── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+
+.flame-text {
+  background: linear-gradient(105deg, #ffe9a8 0%, #ffc93d 26%, #ff8a2e 56%, #ff3b47 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.text-glow {
+  text-shadow: 0 0 24px rgba(255, 130, 46, 0.45), 0 0 80px rgba(255, 59, 71, 0.3);
+}
+
+.ambient-glow {
+  background:
+    radial-gradient(62% 42% at 14% -4%, rgba(255, 201, 61, 0.07), transparent 62%),
+    radial-gradient(52% 38% at 92% 10%, rgba(255, 59, 71, 0.08), transparent 60%),
+    radial-gradient(75% 46% at 50% 108%, rgba(255, 106, 46, 0.11), transparent 62%);
+}
+
+.grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity: 0.032;
+  mix-blend-mode: overlay;
+}
+
+.card-sheen {
+  background: radial-gradient(
+    240px circle at var(--mx, 50%) var(--my, 0%),
+    rgba(255, 190, 80, 0.14),
+    transparent 65%
+  );
+}
+
+/* ── 3D idle float for food imagery ─────────────────── */
+.food-float {
+  animation: food-float 6.5s ease-in-out infinite;
+  animation-delay: var(--float-delay, 0s);
+  will-change: transform;
+}
+@keyframes food-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-6px) rotate(0.45deg); }
+}
+
+/* ── Live steam VFX (pure CSS, GPU-only transforms) ─── */
+.steam {
+  position: absolute;
+  top: -4%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.steam span {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 20px;
+  height: 56px;
+  margin-left: -10px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 248, 240, 0.38), rgba(255, 248, 240, 0));
+  filter: blur(7px);
+  mix-blend-mode: screen;
+  opacity: 0;
+  transform: translate3d(0, 16px, 0) scale(0.55);
+  will-change: transform, opacity;
+  animation: puff 2.9s ease-in-out infinite;
+  animation-play-state: paused;
+}
+.steam[data-live="on"] span { animation-play-state: running; }
+.steam span:nth-child(1) { --dx: -16px; animation-delay: 0s; }
+.steam span:nth-child(2) { --dx: 12px;  animation-delay: 0.95s; }
+.steam span:nth-child(3) { --dx: -5px;  animation-delay: 1.9s; animation-duration: 3.4s; }
+
+.steam-lg span {
+  width: 34px;
+  height: 92px;
+  margin-left: -17px;
+  filter: blur(11px);
+}
+.steam-lg span:nth-child(1) { --dy: -120px; }
+.steam-lg span:nth-child(2) { --dy: -132px; }
+.steam-lg span:nth-child(3) { --dy: -142px; }
+
+@keyframes puff {
+  0%   { opacity: 0;    transform: translate3d(0, 18px, 0) scale(0.55); }
+  16%  { opacity: 0.8; }
+  55%  { opacity: 0.34; }
+  100% { opacity: 0;    transform: translate3d(var(--dx, 0), var(--dy, -80px), 0) scale(1.55); }
+}
+
+/* ── Splash: QR scan laser ──────────────────────────── */
+.scanline {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #ffd93d 30%, #ff6a2e 55%, transparent);
+  box-shadow: 0 0 20px 4px rgba(255, 201, 61, 0.55);
+  animation: scan 1.05s ease-in-out infinite alternate;
+}
+@keyframes scan {
+  from { transform: translateY(0); }
+  to   { transform: translateY(var(--scan-h, 128px)); }
+}
+
+/* ── Special offer bounce + glow ────────────────────── */
+.offer-tag {
+  animation: offer-bounce 2.4s cubic-bezier(0.34, 1.56, 0.64, 1) infinite,
+             offer-glow 2.4s ease-in-out infinite;
+}
+@keyframes offer-bounce {
+  0%, 100% { transform: translateY(0); }
+  12%      { transform: translateY(-7px); }
+  24%      { transform: translateY(0); }
+  36%      { transform: translateY(-4px); }
+  48%      { transform: translateY(0); }
+}
+@keyframes offer-glow {
+  0%, 100% { box-shadow: 0 0 18px rgba(255, 106, 46, 0.35), inset 0 0 12px rgba(255, 180, 60, 0.12); }
+  50%      { box-shadow: 0 0 42px rgba(255, 170, 50, 0.6), inset 0 0 18px rgba(255, 180, 60, 0.22); }
+}
+
+/* ── Order button sheen sweep ───────────────────────── */
+.order-btn { position: relative; overflow: hidden; }
+.order-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.5) 48%, transparent 62%);
+  transform: translateX(-120%);
+  animation: sheen 3.2s ease-in-out infinite;
+}
+@keyframes sheen {
+  0%, 55%  { transform: translateX(-120%); }
+  85%, 100% { transform: translateX(120%); }
+}
+
+/* ── WhatsApp animations ────────────────────────────── */
+.wa-pulse {
+  display: inline-flex;
+  animation: wa-pulse 1.9s ease-in-out infinite;
+  filter: drop-shadow(0 0 7px rgba(37, 211, 102, 0.55));
+}
+@keyframes wa-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.16); }
+}
+
+.wa-ring {
+  border: 2px solid rgba(37, 211, 102, 0.7);
+  animation: wa-ring 2.2s ease-out infinite;
+}
+@keyframes wa-ring {
+  0%   { transform: scale(1);    opacity: 0.8; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+
+/* ── Pulsing status dot ─────────────────────────────── */
+.status-dot { animation: dot-pulse 2s ease-in-out infinite; }
+@keyframes dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
+  50%      { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .steam span, .scanline, .offer-tag, .order-btn::after, .status-dot, .food-float, .wa-pulse, .wa-ring { animation: none !important; }
+}
