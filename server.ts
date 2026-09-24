@@ -70,6 +70,8 @@ interface PublicTenant {
   currency: 'LKR';
   tableCount: number;
   division: string;
+  /** Owning platform vertical — drives branch-scoped tenant listings. */
+  platformBranch: 'DIGITAL_RACE' | 'TASTETRIP';
   categories: string[];
   products: PublicProduct[];
 }
@@ -86,6 +88,8 @@ interface PublicOrder {
   id: string;
   tenantId: string;
   tenantSlug: string;
+  /** Owning platform vertical, inherited from the tenant the order belongs to. */
+  platformBranch: 'DIGITAL_RACE' | 'TASTETRIP';
   tableNumber: number;
   items: PublicOrderItem[];
   subtotal: number;
@@ -168,6 +172,31 @@ function canApproveDivision(actorRole: string, branch?: string | null): boolean 
   if (a === 'DIGITAL_RACE_MASTER') return b === 'DIGITAL_RACE';
   if (a === 'TASTETRIP_MASTER') return b === 'TASTETRIP';
   return false;
+}
+
+/**
+ * BRANCH ISOLATION ("iron wall")
+ * Returns the single platform vertical an actor is allowed to read, or 'ALL'
+ * for the Super Master Admin ladder. Branch masters are hard-pinned to their
+ * own vertical: a Digital Race master can never read TasteTrip rows and vice
+ * versa. Unscoped roles (DIVISION_ADMIN / AGENCY_ADMIN) fall through to 'ALL'
+ * so the pre-existing division-level filtering keeps working unchanged.
+ */
+function actorBranchScope(actorRole: string): 'ALL' | 'DIGITAL_RACE' | 'TASTETRIP' {
+  const r = (actorRole || '').toUpperCase();
+  if (r === 'SUPER_MASTER_ADMIN' || r === 'SUPER_ADMIN' || r === 'MASTER_ADMIN') return 'ALL';
+  if (r === 'DIGITAL_RACE_MASTER') return 'DIGITAL_RACE';
+  if (r === 'TASTETRIP_MASTER') return 'TASTETRIP';
+  return 'ALL';
+}
+
+/** Keep only the rows stamped with the given branch ('ALL' passes everything through). */
+function scopeByBranch<T extends { platformBranch?: string | null }>(
+  rows: T[],
+  scope: 'ALL' | 'DIGITAL_RACE' | 'TASTETRIP',
+): T[] {
+  if (scope === 'ALL') return rows;
+  return rows.filter((row) => String(row?.platformBranch || '').toUpperCase() === scope);
 }
 
 /** Province assignments per division (mirrors src/lib/rbacMatrix.ts SRI_LANKA_DIVISIONS). */
@@ -371,6 +400,7 @@ function seedPublicTenants() {
     currency: 'LKR',
     tableCount: 24,
     division: 'WESTERN',
+    platformBranch: 'DIGITAL_RACE',
     categories: [
       'Signature Dishes',
       'Kottu & Roti',
@@ -478,6 +508,7 @@ function seedPublicTenants() {
     currency: 'LKR',
     tableCount: 18,
     division: 'WESTERN',
+    platformBranch: 'DIGITAL_RACE',
     categories: ['Grill', 'Salads', 'Drinks', 'Desserts'],
     products: [
       {
@@ -534,6 +565,7 @@ function seedPublicTenants() {
     currency: 'LKR',
     tableCount: 12,
     division: 'UP_COUNTRY',
+    platformBranch: 'DIGITAL_RACE',
     categories: ['Hill Country Classics', 'Tea Time', 'Mains'],
     products: [
       {
@@ -1789,13 +1821,17 @@ async function startServer() {
       { id: 't-2b', name: 'Galle Fort Heritage Cafe', slug: 'galle-fort', division: 'SOUTH', province: 'SOUTHERN', platformBranch: 'DIGITAL_RACE', tier: 'PRO', tableCount: 14, productCount: 0 },
     ];
 
+    // BRANCH ISOLATION: a TasteTrip master must see 0 Digital Race restaurant
+    // tenants (and vice versa). Super Master keeps the full catalogue.
+    const visibleStores = scopeByBranch(sampleStores, actorBranchScope(roleHeader));
+
     if (roleHeader.toUpperCase() === 'DIVISION_ADMIN' && divisionHeader) {
-      const filtered = sampleStores.filter((s) => s.division === divisionHeader.toUpperCase());
+      const filtered = visibleStores.filter((s) => s.division === divisionHeader.toUpperCase());
       res.json({ success: true, count: filtered.length, tenants: filtered });
       return;
     }
 
-    res.json({ success: true, count: sampleStores.length, tenants: sampleStores });
+    res.json({ success: true, count: visibleStores.length, tenants: visibleStores });
   });
 
   app.post('/api/master/tenants', (req: Request, res: Response) => {
@@ -2112,6 +2148,7 @@ async function startServer() {
       id: orderId,
       tenantId: tenant.id,
       tenantSlug: tenant.slug,
+      platformBranch: tenant.platformBranch || 'DIGITAL_RACE',
       tableNumber: table,
       items: pricedItems,
       subtotal,
@@ -2199,6 +2236,10 @@ async function startServer() {
           return false;
         });
       }
+    } else {
+      // BRANCH ISOLATION: a Branch Master only ever sees rows stamped with
+      // their own vertical. Zero cross-branch rows — ever.
+      list = scopeByBranch(list, actorBranchScope(actorRole));
     }
 
     res.json({
@@ -2375,6 +2416,21 @@ async function startServer() {
     if (!target) {
       res.status(404).json({ success: false, error: 'Admin not found' });
       return;
+    }
+
+    // PASSWORD RESETS ARE RESERVED FOR THE SUPER MASTER ADMIN.
+    // Branch Masters may edit names/divisions/phones but must never be able to
+    // overwrite another account's credentials.
+    const passwordPayload = (req.body || {}).password;
+    if (passwordPayload !== undefined && passwordPayload !== null && String(passwordPayload) !== '') {
+      if (actorRole !== 'SUPER_MASTER_ADMIN') {
+        res.status(403).json({
+          success: false,
+          error: 'Only the Super Master Admin can change administrator passwords.',
+          code: 'ERR_SUPER_ONLY',
+        });
+        return;
+      }
     }
 
     if ((target.role === 'SUPER_MASTER_ADMIN') && actorRole !== 'SUPER_MASTER_ADMIN' && actorRole !== 'SUPER_ADMIN') {
@@ -2565,9 +2621,13 @@ async function startServer() {
       name: t.name,
       slug: t.slug,
       division: t.division,
+      platformBranch: t.platformBranch,
       tableCount: t.tableCount,
       productCount: t.products.length,
     }));
+
+    // BRANCH ISOLATION: hard-pin branch masters to their own vertical.
+    tenants = scopeByBranch(tenants, actorBranchScope(roleHeader));
 
     if (roleHeader.toUpperCase() === 'DIVISION_ADMIN') {
       const div = String(divisionHeader || '').toUpperCase();
@@ -2575,6 +2635,92 @@ async function startServer() {
     }
 
     res.json({ success: true, count: tenants.length, tenants });
+  });
+
+  // ---------------------------------------------------------------------------
+  // SUPER MASTER MAINTENANCE ENDPOINTS (/api/super/*)
+  //
+  // These routes deliberately IGNORE the x-client-role header entirely: a real,
+  // server-issued session (Bearer token or ceyteq_session cookie) is required,
+  // so a client cannot spoof its way into super-master territory by setting a
+  // role header. Anything that is not a genuine SUPER_MASTER_ADMIN session gets
+  // a flat 403 "Unauthorized Action".
+  // ---------------------------------------------------------------------------
+  const requireSuperSession = (req: Request, res: Response): boolean => {
+    const session = parseSessionToken(req);
+    const role = String(session?.role || '').toUpperCase();
+    if (!session || role !== 'SUPER_MASTER_ADMIN') {
+      res.status(403).json({ success: false, error: 'Unauthorized Action' });
+      return false;
+    }
+    return true;
+  };
+
+  /** Factory management password the Super Master account is reset to. */
+  const DEFAULT_MANAGEMENT_PASSWORD = 'admin@ceyteq2026';
+
+  app.post('/api/super/reset-management-password', async (req: Request, res: Response) => {
+    if (!requireSuperSession(req, res)) return;
+
+    const requested = String((req.body || {}).newPassword || '').trim();
+    const newPassword = requested || DEFAULT_MANAGEMENT_PASSWORD;
+    if (newPassword.length < 8) {
+      res.status(400).json({
+        success: false,
+        error: 'New management password must be at least 8 characters.',
+      });
+      return;
+    }
+
+    const result: { success: boolean; email: string; password: string; rotatedAt: string } = {
+      success: true,
+      email: '',
+      password: newPassword,
+      rotatedAt: new Date().toISOString(),
+    };
+
+    const superAdmin = adminsStore.find((a) => a.role === 'SUPER_MASTER_ADMIN');
+    if (superAdmin) {
+      superAdmin.passwordHash = await bcrypt.hash(newPassword, 10);
+      superAdmin.demoPassword = newPassword;
+      superAdmin.status = 'ACTIVE';
+      result.email = superAdmin.email;
+    }
+
+    try {
+      credentialsService.setSuperAdminPassword(newPassword);
+      if (!result.email) result.email = credentialsService.getCredentials().superAdminEmail || '';
+    } catch {
+      // in-memory adminsStore is the source of truth
+    }
+
+    res.json({
+      ...result,
+      message: `Management password reset for ${result.email || 'the Super Master Admin'}.`,
+    });
+  });
+
+  app.post('/api/super/clear-demo-data', (_req: Request, res: Response) => {
+    if (!requireSuperSession(_req, res)) return;
+
+    const clearedOrders = publicOrdersStore.length;
+    publicOrdersStore.length = 0;
+
+    // Re-seed the tenant catalogue so the demo data set is pristine again.
+    publicTenantsStore.length = 0;
+    seedPublicTenants();
+
+    const result = {
+      success: true,
+      clearedOrders,
+      tenants: publicTenantsStore.length,
+      clearedAt: new Date().toISOString(),
+    };
+
+    res.json({
+      ...result,
+      message: `Cleared ${clearedOrders} demo order(s); tenant catalogue re-seeded to ${result.tenants} restaurant(s).`,
+    });
   });
 
   // Health check endpoint

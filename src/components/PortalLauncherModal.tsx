@@ -21,9 +21,10 @@ import {
   Tv
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { ActiveView, Tenant } from '../types';
+import { ActiveView, Tenant, AuthUser } from '../types';
 import { SUPABASE_SQL_SETUP_SCRIPT } from '../lib/supabaseClient';
 import { soundService } from '../lib/audioService';
+import { resolveActorBranch } from '../lib/branchScope';
 
 interface PortalLauncherModalProps {
   isOpen: boolean;
@@ -33,6 +34,8 @@ interface PortalLauncherModalProps {
   onSelectPortal: (view: ActiveView, standalone?: boolean) => void;
   isStandalone: boolean;
   onToggleStandalone: (val: boolean) => void;
+  /** Acting user — drives branch-scoped portal visibility. */
+  currentUser?: AuthUser | null;
 }
 
 export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
@@ -43,6 +46,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
   onSelectPortal,
   isStandalone,
   onToggleStandalone,
+  currentUser = null,
 }) => {
   const [activeTab, setActiveTab] = useState<'PORTALS' | 'SQL_SETUP'>('PORTALS');
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
@@ -56,6 +60,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
     {
       key: 'portal-public-menu',
       id: 'PUBLIC_MENU' as ActiveView,
+      branch: 'ALL' as const,
       title: 'Customer Mobile Menu (QR Code)',
       badge: 'Table # ' + tableNumber,
       badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
@@ -68,6 +73,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
     {
       key: 'portal-client-dashboard',
       id: 'CLIENT_DASHBOARD' as ActiveView,
+      branch: 'DIGITAL_RACE' as const,
       title: 'Restaurant Owner & Manager Admin',
       badge: currentTenant.name,
       badgeColor: 'bg-blue-100 text-blue-800 border-blue-300',
@@ -80,6 +86,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
     {
       key: 'portal-pro-pos',
       id: 'PRO_OPERATIONS' as ActiveView,
+      branch: 'DIGITAL_RACE' as const,
       title: 'Kitchen KOT & Live POS Terminal',
       badge: 'Audio Bell Enabled',
       badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
@@ -92,6 +99,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
     {
       key: 'portal-digital-race-master',
       id: 'SUPER_ADMIN' as ActiveView,
+      branch: 'DIGITAL_RACE' as const,
       title: 'Digital Race Platform Master',
       badge: 'Level 2A Master',
       badgeColor: 'bg-cyan-100 text-cyan-800 border-cyan-300',
@@ -104,6 +112,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
     {
       key: 'portal-tastetrip-master',
       id: 'SUPER_ADMIN' as ActiveView,
+      branch: 'TASTETRIP' as const,
       title: 'TasteTrip Delivery Master',
       badge: 'Level 2B Master',
       badgeColor: 'bg-rose-100 text-rose-800 border-rose-300',
@@ -116,6 +125,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
     {
       key: 'portal-division-admin',
       id: 'SUPER_ADMIN' as ActiveView,
+      branch: 'ALL' as const,
       title: 'Regional Division Admins (8 Districts/Provinces)',
       badge: 'Level 3 RBAC',
       badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-300',
@@ -128,6 +138,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
     {
       key: 'portal-super-master-admin',
       id: 'SUPER_ADMIN' as ActiveView,
+      branch: 'ALL' as const,
       title: 'Ceyteq Root Super Master Admin',
       badge: 'Root System Supervisor',
       badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
@@ -138,6 +149,13 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
       url: `${currentOrigin}/?portal=super&login=true`,
     },
   ];
+
+  // BRANCH ISOLATION: only surface the portals that belong to the actor's
+  // vertical. Super Master Admin ('ALL') keeps every portal.
+  const actorBranch = resolveActorBranch(currentUser);
+  const visiblePortals = currentUser
+    ? portals.filter((portal) => portal.branch === 'ALL' || portal.branch === actorBranch)
+    : portals;
 
   const handleCopy = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -249,7 +267,7 @@ export const PortalLauncherModal: React.FC<PortalLauncherModalProps> = ({
 
               {/* Grid of 4 Portals */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {portals.map((portal) => {
+                {visiblePortals.map((portal) => {
                   const Icon = portal.icon;
                   return (
                     <div

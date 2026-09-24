@@ -173,6 +173,44 @@ export const LoginGate: React.FC<LoginGateProps> = ({
     setIsQuickFillOpen(false);
   };
 
+  /**
+   * Mints a REAL server session (the response sets the ceyteq_session cookie)
+   * and returns the server-issued token + redirectUrl.
+   *
+   * This is required because the guarded /api/super/* maintenance endpoints
+   * ignore the x-client-role header entirely — they demand a genuine session,
+   * so a role-header spoof can never reach Super Master territory.
+   * Returns null when the backend is unreachable (offline dev still works).
+   */
+  const mintServerSession = async (
+    rawEmail: string,
+    rawPassword: string,
+  ): Promise<{ token?: string; redirectUrl?: string } | null> => {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: rawEmail.trim(), password: rawPassword }),
+      });
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || !contentType.includes('application/json')) return null;
+      return (await res.json()) as { token?: string; redirectUrl?: string };
+    } catch {
+      return null;
+    }
+  };
+
+  /** Deterministic, branch-correct landing path for an authenticated role. */
+  const landingPathFor = (role: string, division?: string | null): string => {
+    const normalized = String(role || '').toUpperCase();
+    if (normalized === 'DIGITAL_RACE_MASTER') return '/dashboard/digital-race';
+    if (normalized === 'TASTETRIP_MASTER') return '/dashboard/tastetrip';
+    if (normalized === 'DIVISION_ADMIN' || normalized === 'AGENCY_ADMIN') {
+      return `/dashboard/division/${String(division || 'up-country').toLowerCase().replace(/_/g, '-')}`;
+    }
+    return '/dashboard/super';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
@@ -206,10 +244,16 @@ export const LoginGate: React.FC<LoginGateProps> = ({
           status: 'ACTIVE',
           failedLoginAttempts: 0,
         };
+        // Mint a real server session so guarded /api/super/* calls succeed.
+        const serverSession = await mintServerSession(email, password);
         credentialsService.setCurrentSessionUser(rootUser);
         setSuccessMessage('Welcome Super Master Admin! Access Granted.');
         setTimeout(() => {
-          onLoginSuccess(rootUser, 'jwt_root_session', '/dashboard/super');
+          onLoginSuccess(
+            rootUser,
+            serverSession?.token || 'jwt_root_session',
+            serverSession?.redirectUrl || '/dashboard/super',
+          );
         }, 500);
         return;
       } else {
@@ -225,6 +269,8 @@ export const LoginGate: React.FC<LoginGateProps> = ({
     if (matchedAdmin) {
       if (matchedAdmin.password === password || password === 'admin2026!') {
         soundService.playSuccessChime();
+        // BRANCH MASTERS MUST NEVER BE ELEVATED TO SUPER_MASTER_ADMIN.
+        // Each role maps 1:1 onto its own authority level.
         const mappedRole =
           matchedAdmin.role === 'DIVISION_ADMIN'
             ? ('DIVISION_ADMIN' as const)
@@ -232,9 +278,13 @@ export const LoginGate: React.FC<LoginGateProps> = ({
               ? ('AGENCY_ADMIN' as const)
               : matchedAdmin.role === 'MASTER_ADMIN'
                 ? ('MASTER_ADMIN' as const)
-                : matchedAdmin.role === 'FRONT'
-                  ? ('FRONT' as const)
-                  : ('SUPER_MASTER_ADMIN' as const);
+                : matchedAdmin.role === 'DIGITAL_RACE_MASTER'
+                  ? ('DIGITAL_RACE_MASTER' as const)
+                  : matchedAdmin.role === 'TASTETRIP_MASTER'
+                    ? ('TASTETRIP_MASTER' as const)
+                    : matchedAdmin.role === 'FRONT'
+                      ? ('FRONT' as const)
+                      : ('SUPER_MASTER_ADMIN' as const);
         const adminUser: AuthUser = {
           id: matchedAdmin.id,
           email: matchedAdmin.email,
@@ -246,10 +296,18 @@ export const LoginGate: React.FC<LoginGateProps> = ({
           status: 'ACTIVE',
           failedLoginAttempts: 0,
         };
+
+        // Mint a real server session (sets ceyteq_session cookie + bearer token).
+        const serverSession = await mintServerSession(email, password);
+
         credentialsService.setCurrentSessionUser(adminUser);
         setSuccessMessage(`Welcome ${matchedAdmin.name}! Access Granted.`);
         setTimeout(() => {
-          onLoginSuccess(adminUser, 'jwt_admin_session', `/dashboard/division/${matchedAdmin.division || 'up-country'}`);
+          onLoginSuccess(
+            adminUser,
+            serverSession?.token || 'jwt_admin_session',
+            serverSession?.redirectUrl || landingPathFor(mappedRole, matchedAdmin.division),
+          );
         }, 500);
         return;
       } else {

@@ -24,6 +24,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { DivisionId, EnterpriseUserRole, SRI_LANKA_DIVISIONS } from './src/lib/rbacMatrix';
+import { portalBranch, resolveActorBranch, dashboardPathForActor } from './src/lib/branchScope';
 
 // Edge sliding-window rate limit memory cache
 const edgeRateLimitCache = new Map<string, { count: number; resetAt: number }>();
@@ -187,6 +188,35 @@ export async function middleware(request: NextRequest) {
     unauthUrl.searchParams.set('error', reason);
     return NextResponse.redirect(unauthUrl);
   };
+
+  // ----------------------------------------------------------------------------
+  // 2B. LEVEL 0: PLATFORM BRANCH PORTAL WALL (?portal=...)
+  // A Digital Race actor must never be able to open the TasteTrip portal by
+  // pasting /?portal=tastetrip, and a TasteTrip actor must never reach the
+  // Digital Race / restaurant-client portals. Blocked actors are bounced back
+  // to their own branch dashboard. The Super Master Admin bypasses this wall.
+  // ----------------------------------------------------------------------------
+  const portalParam = request.nextUrl.searchParams.get('portal');
+  const portalOwningBranch = portalBranch(portalParam);
+
+  if (sessionUser && portalOwningBranch && !isSuperMaster) {
+    const actor = {
+      role: sessionUser.role,
+      branch: sessionUser.platformBranch || sessionUser.branch,
+      platformBranch: sessionUser.platformBranch,
+    };
+    const actorBranch = resolveActorBranch(actor);
+
+    if (actorBranch !== 'ALL' && actorBranch !== portalOwningBranch) {
+      console.warn(
+        `[AUTH_ROUTE_GUARD_DECISION] BRANCH_PORTAL_BLOCKED: user=${sessionUser.email}, actorBranch=${actorBranch}, portal=${portalParam}`
+      );
+      return handleForbidden(
+        `Branch Isolation Violation: your ${actorBranch} credentials cannot open the ${portalOwningBranch} portal.`,
+        dashboardPathForActor(actor)
+      );
+    }
+  }
 
   // ----------------------------------------------------------------------------
   // 3. DETERMINISTIC POST-LOGIN REDIRECT (Generic /dashboard or /login with active session)

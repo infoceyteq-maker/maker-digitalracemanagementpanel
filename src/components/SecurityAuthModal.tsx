@@ -25,6 +25,7 @@ import {
 import { AuthUser, SubscriptionTier, UserRole, Tenant } from '../types';
 import { CeyteqLogo } from './CeyteqLogo';
 import { credentialsService, RoleCredentials } from '../lib/credentialsService';
+import { isSuperMaster } from '../lib/branchScope';
 import { Copy, Key, Trash2, Sparkles as SparklesIcon } from 'lucide-react';
 
 interface SecurityAuthModalProps {
@@ -570,15 +571,18 @@ export const SecurityAuthModal: React.FC<SecurityAuthModalProps> = ({
                   </button>
                 )}
 
-                <button
-                  onClick={() => setFlowStep('DATA_CLEANUP')}
-                  className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 shrink-0 ${
-                    flowStep === 'DATA_CLEANUP' ? 'bg-amber-400 text-slate-900 shadow-sm font-black' : 'text-slate-300 hover:text-white bg-white/5'
-                  }`}
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-amber-300" />
-                  <span>Clear Demo Data</span>
-                </button>
+                {/* DATA CLEANUP is reserved for the Super Master Admin only. */}
+                {isSuperMaster(currentUser?.role) && (
+                  <button
+                    onClick={() => setFlowStep('DATA_CLEANUP')}
+                    className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                      flowStep === 'DATA_CLEANUP' ? 'bg-amber-400 text-slate-900 shadow-sm font-black' : 'text-slate-300 hover:text-white bg-white/5'
+                    }`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Clear Demo Data</span>
+                  </button>
+                )}
               </>
             )}
             <button
